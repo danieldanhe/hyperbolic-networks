@@ -1,0 +1,276 @@
+% !TEX TS-program = lualatex
+
+\documentclass[citation=project.bib,handout,draft]{presentation}
+
+\title{Networks and hyperbolic geometry}
+\subtitle{Advanced Topic Post-Euclidean Geometry \\ Project Presentation}
+\author{Daniel He \myname}
+\institute{Singapore American School}
+\hypersetup{pdfauthor = {Daniel He 賀守愚}}
+
+\DeclareMathOperator\arcosh{arcosh}
+
+\begin{document}
+
+\frame{\titlepage}
+
+\begin{frame}[standout]
+  Thank you. Any questions?
+
+  \qrcode{http://www.ctan.org}
+\end{frame}
+
+\frame{\tableofcontents}
+
+\section{Networks}
+
+\begin{frame}{What is a network?}
+  A system of interconnected elements (called \imp{nodes} or \imp{vertices}) linked by relationships (called \imp{edges} or \imp{connections}). \pause
+
+  \begin{example}
+    \begin{multicols}{3}
+      \begin{itemize}[<+->]
+        \parskip=0em
+        \item Sites on the Internet
+        \item Social connections (“six degrees of separation”)
+        \item Neural networks and genetic or protein interactions
+        \item Road, railway, and air routes
+        \item Food webs in ecosystems
+        \item Citations among academic papers
+        \item International alliances
+        \item Finances among banks and institutions
+        \item Co-purchases on e-commerce platforms
+        \item Microservice dependencies in tech
+        \item Transmission of infectious diseases
+        \item Semantic networks
+        \item Collaborations in arts, music, and film
+        \item Blockchain and cryptocurrency transactions
+      \end{itemize}
+    \end{multicols}
+  \end{example}
+\end{frame}
+
+\begin{frame}{Properties of these networks}
+  What do all of these networks have in common? \pause
+
+  They cannot be modelled by completely random networks, where connections are made by uniform random chance. There are two main differences: \pause
+  \begin{itemize}
+    \item \imp{Heterogeneity}. \pause Some nodes have more connections than others. \pause On social media, most people have a few hundred followers, but a few celebrities have millions. \pause
+    \item \imp{Clustering}. \pause Connections within groups tend to happen more than outside of them. \pause If A and B follow each other, and B and C follow each other, A and C likely follow each other too.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Heterogeneity and clustering}
+  \begin{tabular}{lll}
+    \toprule
+    & Low heterogeneity & High heterogeneity \\ \midrule
+    Low clustering & \makecell{\input{generate-points/low_clust_low_hetero.tikz}} & \makecell{\input{generate-points/low_clust_high_hetero.tikz}} \\
+    High clustering & \makecell{\input{generate-points/high_clust_low_hetero.tikz}} & \makecell{\input{generate-points/high_clust_high_hetero.tikz}} \\ \bottomrule
+  \end{tabular}
+
+  All networks shown here have approximately \(60\) nodes and \(120\) connections.
+\end{frame}
+
+\begin{frame}{Scale-free networks}
+  We will look at \imp{scale-free} networks specifically. The degree distribution follows a power law. \pause
+
+  The fraction \(P(k)\) of nodes having \(k\) connections is approximately
+  \[P(k)\sim k^{-\gamma}\]
+  for large \(k\). \pause
+
+  Typically, \(2<\gamma<3\). \pause For the Internet, \(\gamma\approx2.1\).\footcite{Krioukov_2010}
+\end{frame}
+
+\begin{frame}{The solution: hyperbolic geometry}
+  \begin{tabular}{lll}
+    \toprule
+    & Low heterogeneity & High heterogeneity \\ \midrule
+    Low clustering & \onslide<2->{Random graphs\footcite[Connects pairs completely at random.]{Erdős_Rényi_1959}} & \onslide<3->{Preferential attachment\footcite[New nodes prefer to connect to already well-connected hubs.]{Barabási_Albert_1999}} \\
+    High clustering & \onslide<4->{Small-world\footcite[Starts with a regular, clustered lattice and rewires a few connections to create long-range shortcuts.]{Watts_Strogatz_1998}} & \onslide<5->{Hyperbolic geometry} \\ \bottomrule
+  \end{tabular}
+\end{frame}
+
+\section{Hyperbolic geometry}
+
+\begin{frame}{The three geometries}
+  \begin{tabular}{llll}
+    \toprule
+    & Hyperbolic & Euclidean & Spherical \\ \midrule
+    \onslide<+->{Model & \makecell{\begin{tikzpicture}
+      \begin{axis}[
+        ticks=none,
+        height=4cm,
+        width=4cm,
+        xmin=-1.5,
+        xmax=1.5,
+        ymin=-1.5,
+        ymax=1.5,
+        zmin=-1.5,
+        zmax=1.5,
+        axis equal,
+        clip=true
+      ]
+        \addplot3[
+          surf,
+          fill opacity=0.15,
+          fill=white,
+          samples=40,
+          domain=0:360,
+          y domain=-7.5:7.5
+        ] ({sqrt(1+y^2)*cos(x)}, {sqrt(1+y^2)*sin(x)}, {y});
+        \draw[->, thick, white] (0,0,0) -- (1,0,0) node[midway, above] {\(R\)};
+      \end{axis}
+    \end{tikzpicture}} & \makecell{\begin{tikzpicture}
+      \begin{axis}[
+        ticks=none,
+        height=4cm,
+        width=4cm,
+        xmin=-1,
+        xmax=1,
+        ymin=-1,
+        ymax=1,
+        zmin=-1,
+        zmax=1,
+        axis equal,
+        clip=true
+      ]
+        \addplot3[
+          surf,
+          fill opacity=0.15,
+          fill=white,
+          samples=40,
+          domain=-6:6,
+          y domain=-6:6
+        ] {0};
+      \end{axis}
+    \end{tikzpicture}} & \makecell{\begin{tikzpicture}
+      \begin{axis}[
+        ticks=none,
+        height=4cm,
+        width=4cm,
+        xmin=-1,
+        xmax=1,
+        ymin=-1,
+        ymax=1,
+        zmin=-1,
+        zmax=1,
+        axis equal,
+        clip=false
+      ]
+        \addplot3[
+          surf,
+          fill opacity=0.15,
+          fill=white,
+          samples=40,
+          domain=0:180,
+          y domain=0:360
+        ] ({cos(y)*sin(x)}, {sin(y)*sin(x)}, {cos(x)});
+        \draw[->, thick, white] (0,0,0) -- (1,0,0) node[midway, above] {\(R\)};
+      \end{axis}
+    \end{tikzpicture}}} \\
+    \onslide<+->{\imp{Curvature \(K\)} & \(=-1/R^2<0\) & \(=0\) & \(=+1/R^2>0\)} \\
+    \onslide<+->{\makecell[l]{Parallel lines \\ (\imp{geodesics})} & \(\infty\) & \(1\) & \(0\)} \\
+    \onslide<+->{\makecell[l]{Sum of angles \\ in triangle} & \(<\pi\) & \(=\pi\) & \(>\pi\)} \\
+    \onslide<+->{\makecell[l]{Circumference of \\ a circle} & \(>2\pi r\) & \(=2\pi r\) & \(<2\pi r\)} \\ \bottomrule
+  \end{tabular}
+\end{frame}
+
+\begin{frame}{Distance and area behaviour}
+  \onslide<1->{Consider a circle of radius \(r\) on a plane with radius of curvature \(R\).}
+
+  \onslide<2->{
+    \begin{tabular}{lll}
+      \toprule
+      & Circumference of a circle & Area of a circle \\ \midrule
+      \onslide<7->{Hyperbolic & \(C_{\mathrm H}(r)=2\pi R\sinh\Bigl(\dfrac rR\Bigr)\onslide<8->{\sim e^{r/R}}\) & \(A_{\mathrm H}(r)=2\pi R^2\biggl(\cosh\Bigl(\dfrac rR\Bigr)-1\biggr)\onslide<8->{\sim e^{r/R}}\)} \\
+      \onslide<3->{Euclidean & \(C_{\mathrm E}(r)=2\pi r\onslide<4->{\sim r}\) & \(A_{\mathrm E}(r)=\pi r^2\onslide<4->{\sim r^2}\)} \\
+      \onslide<5->{Spherical & \(C_{\mathrm S}(r)=2\pi R\sin\Bigl(\dfrac rR\Bigr)\onslide<6->{\to0}\) & \(A_{\mathrm S}(r)=2\pi R^2\biggl(1-\cos\Bigl(\dfrac rR\Bigr)\biggr)\onslide<6->{\to4\pi R^2}\)} \\ \bottomrule
+    \end{tabular}
+  }
+
+  \onslide<9->{Hyperbolic geometry has “more space”.}
+\end{frame}
+
+\begin{frame}{The Poincaré disc}
+  \onslide<1->{How do we represent an infinite, expanding space in a way we can visualize and compute with?}
+
+  \begin{itemize}
+    \onslide<2->{\item The \imp{Poincaré disc} is a mapping of a hyperbolic plane (assume onto a unit disc with \(K=-R=-1\)); it preserves angles but not distances.}
+    \onslide<3->{\item The distance between two points is
+    \[d(\bm u,\bm v)=\arcosh\Bigl(1+\frac{2\lVert\bm u-\bm v\rVert^2}{(1-\lVert\bm u\rVert^2)(1-\lVert\bm v\rVert^2)}\Bigr)\]}
+    \onslide<5->{\item Geodesics are circular arcs perpendicular to the boundary.}
+  \end{itemize}
+
+  \onslide<4->{
+    \begin{example}
+      \(\{3,7\}\)\quad
+      \includegraphics[height=2cm]{tilings/tiling-3-7.pdf}
+      \qquad
+      \(\{4,5\}\)\quad
+      \includegraphics[height=2cm]{tilings/tiling-4-5.pdf}
+      \qquad
+      \(\{5,4\}\)\quad
+      \includegraphics[height=2cm]{tilings/tiling-5-4.pdf}
+    \end{example}
+  }
+\end{frame}
+
+\section{The connection between the two}
+
+\begin{frame}{Network generation in hyperbolic space}
+  \begin{itemize}
+    \onslide<1->{\item There are \(N\) nodes. Each node \(i\) is assigned coordinates \((r_i,\theta_i)\).}
+    \begin{itemize}
+      \item \onslide<2->{\(r_i\) is drawn from the probability density function
+      \[\rho(r)=\frac{\alpha\sinh(\alpha r)}{\cosh(\alpha L)-1}\sim e^{\alpha r}\]
+      where \(\alpha\) and \(L\) are chosen such that \(\bar k=\int_0^L\rho(r)\bar k(r)\mathop{\mathrm dr}\approx(8/\pi)Ne^{-L/2}\) and \(\gamma=2\alpha+1\).}
+      \item \onslide<3->{\(\theta_i\) is drawn uniformly from \([0,2\pi)\).}
+    \end{itemize}
+    \item \onslide<4->{For any two nodes \(i,j\), find the hyperbolic distance between them.} \onslide<5->{For large \(L,r_i,r_j\), this is approximately
+    \[x_{i,j}=r_i+r_j+2\ln\Bigl(\frac{\min(\lvert\theta_i-\theta_j\rvert,2\pi-\lvert\theta_i-\theta_j\rvert)}2\Bigr)\]}
+    \onslide<6->{Connect with the connection probability \(p(x_{i,j})\).} \onslide<7->{The simplest choice is the step function; define \(p(x_{i,j})=1\) for \(x_{i,j}\leq L\) and \(p(x_{i,j})=0\) otherwise.}
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Visualizing the model}
+  \begin{tabular}{llllll}
+    \toprule
+    & \(N=20\) & \(N=50\) & \(N=100\) & \(N=200\) & \(N=500\) \\ \midrule
+    \(\gamma=2.1\) & \makecell{\input{poincare-model/network_2.1_20.tikz}} & \makecell{\input{poincare-model/network_2.1_50.tikz}} & \makecell{\input{poincare-model/network_2.1_100.tikz}} & \makecell{\input{poincare-model/network_2.1_200.tikz}} & \makecell{\input{poincare-model/network_2.1_500.tikz}} \\
+    \(\gamma=2.5\) & \makecell{\input{poincare-model/network_2.5_20.tikz}} & \makecell{\input{poincare-model/network_2.5_50.tikz}} & \makecell{\input{poincare-model/network_2.5_100.tikz}} & \makecell{\input{poincare-model/network_2.5_200.tikz}} & \makecell{\input{poincare-model/network_2.5_500.tikz}} \\
+    \(\gamma=3.0\) & \makecell{\input{poincare-model/network_3.0_20.tikz}} & \makecell{\input{poincare-model/network_3.0_50.tikz}} & \makecell{\input{poincare-model/network_3.0_100.tikz}} & \makecell{\input{poincare-model/network_3.0_200.tikz}} & \makecell{\input{poincare-model/network_3.0_500.tikz}} \\ \bottomrule
+  \end{tabular}
+\end{frame}
+
+\begin{frame}{The result and its converse}
+  The resulting network has heterogeneity and clustering.\footcite{Krioukov_2010} \pause
+
+  The converse is also true; a network with heterogeneity and clustering can also be modelled by this model. It is possible to use statistical techniques to infer \((r,\theta)\) for each node using \imp{network embedding}.\footcite{Krioukov_2010} \pause
+
+  Why does this matter? \pause It is possible to use a \imp{greedy algorithm} to route from one node to another. \pause A greedy algorithm makes the locally optimal choice at each stage.
+\end{frame}
+
+\section{Routing between nodes}
+
+\begin{frame}{Greedy routing algorithm}
+  We will route from node \(m\) to \(n\). Assume we know the coordinates of node \(m\), its neighbours, and its destination \(n\). \pause
+
+  \imp{Original Greedy Forwarding (OGF)}:
+  \begin{itemize}
+    \item If \(m=n\), the problem is solved. \pause
+    \item If, out of all its neighbours, \(m\) itself is the closest to \(n\), it is a local minimum and the algorithm fails. \pause
+    \item Otherwise, find the node \(k\) whose hyperbolic distance to \(n\) is least. Route from \(k\) to \(n\). \pause
+  \end{itemize}
+
+  \imp{Modified Greedy Forwarding (MGF)}: The algorithm will not exclude the current node. \pause However, it will fail if the best neighbour is the previous node, thus causing an infinite loop. \pause
+
+  With \(\gamma=2.1\), OGF and MGF have a success rate of \(99.92\,\%\) and \(99.99\,\%\), respectively.\footcite{Krioukov_2010}
+\end{frame}
+
+\frame[allowframebreaks]{\printbibliography}
+
+\begin{frame}[standout]
+  Thank you. Any questions?
+\end{frame}
+
+\end{document}
