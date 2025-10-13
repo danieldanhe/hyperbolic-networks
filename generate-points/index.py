@@ -1,18 +1,19 @@
 import numpy as np
 import networkx as nx
-from collections import defaultdict
+import matplotlib.pyplot as plt
+from matplotlib.patches import Circle
 import os
 
 # Get the directory where this script is located
 script_dir = os.path.dirname(os.path.abspath(__file__))
 
-def generate_erdos_renyi(n=60, m=120):
+def generate_low_low(n=60, m=120):
     """Low clustering, low heterogeneity: Random graph"""
     G = nx.gnm_random_graph(n, m)
     pos = {i: (np.random.random(), np.random.random()) for i in range(n)}
     return G, pos
 
-def generate_barabasi_albert(n=60, m=2):
+def generate_low_high(n=60, m=2):
     """Low clustering, high heterogeneity: Preferential attachment"""
     G = nx.barabasi_albert_graph(n, m)
     # Use spring layout for better hub visualization
@@ -26,7 +27,7 @@ def generate_barabasi_albert(n=60, m=2):
            for i in range(n)}
     return G, pos
 
-def generate_watts_strogatz(n=60, k=5, p=0.1):
+def generate_high_low(n=60, k=5, p=0.1):
     """High clustering, low heterogeneity: Small-world"""
     G = nx.watts_strogatz_graph(n, k, p)
     # Grid layout to show local structure
@@ -39,7 +40,7 @@ def generate_watts_strogatz(n=60, k=5, p=0.1):
                   row / grid_size + np.random.uniform(-0.05, 0.05))
     return G, pos
 
-def generate_hyperbolic_proxy(n=60, m=120):
+def generate_high_high(n=60, m=120):
     """High clustering, high heterogeneity: Modular network with hubs"""
     G = nx.Graph()
     G.add_nodes_from(range(n))
@@ -75,29 +76,23 @@ def generate_hyperbolic_proxy(n=60, m=120):
                 edges_added += 1
     
     # Create triangles and local clustering among regular nodes
-    # Group nodes by proximity to create local clusters
     while edges_added < target_edges:
-        # Pick a random node
         node = np.random.choice(regular_nodes)
-        # Find its neighbors
         neighbors = list(G.neighbors(node))
         
         if len(neighbors) >= 2:
-            # Create triangles: connect pairs of neighbors
             n1, n2 = np.random.choice(neighbors, size=2, replace=False)
             if not G.has_edge(n1, n2):
                 G.add_edge(n1, n2)
                 edges_added += 1
                 continue
         
-        # Otherwise add edge to nearby node (spatial clustering)
-        if len(neighbors) < 6:  # Don't overconnect
+        if len(neighbors) < 6:
             distances = [(other, np.sqrt((pos[node][0]-pos[other][0])**2 + 
                                         (pos[node][1]-pos[other][1])**2)) 
                         for other in regular_nodes if other != node and not G.has_edge(node, other)]
             if distances:
                 distances.sort(key=lambda x: x[1])
-                # Connect to one of the 10 nearest nodes
                 candidates = [d[0] for d in distances[:10]]
                 if candidates:
                     target = np.random.choice(candidates)
@@ -105,7 +100,6 @@ def generate_hyperbolic_proxy(n=60, m=120):
                     edges_added += 1
                     continue
         
-        # Fallback: random edge
         available_pairs = [(i, j) for i in range(n) for j in range(i+1, n) 
                           if not G.has_edge(i, j)]
         if available_pairs:
@@ -115,14 +109,41 @@ def generate_hyperbolic_proxy(n=60, m=120):
     
     return G, pos
 
+def plot_network(G, pos, title, ax):
+    """Plot network using matplotlib with node sizes scaled by degree"""
+    ax.set_aspect('equal')
+    ax.set_xlim(-0.05, 1.05)
+    ax.set_ylim(-0.05, 1.05)
+    ax.axis('off')
+    ax.set_title(title, fontsize=10, pad=10)
+    
+    # Calculate node sizes based on degrees
+    degrees = [d for _, d in G.degree()]
+    if max(degrees) > 0:
+        node_sizes = 50 + 400 * (np.array(degrees) / max(degrees))
+    else:
+        node_sizes = [50] * len(degrees)
+    
+    # Draw edges
+    for u, v in G.edges():
+        x1, y1 = pos[u]
+        x2, y2 = pos[v]
+        ax.plot([x1, x2], [y1, y2], 'gray', linewidth=0.5, alpha=0.3, zorder=1)
+    
+    # Draw nodes
+    x_coords = [pos[i][0] for i in G.nodes()]
+    y_coords = [pos[i][1] for i in G.nodes()]
+    ax.scatter(x_coords, y_coords, s=node_sizes, c='steelblue', 
+               alpha=0.7, edgecolors='white', linewidths=0.5, zorder=2)
+
 def to_tikz(G, pos, title):
     """Convert graph to TikZ code with node sizes scaled by degree"""
     tikz = f"% {title}\n"
     tikz += "\\begin{tikzpicture}[scale=2.5]\n"
     
-    # Calculate node sizes based on degrees (like in hyperbolic network)
+    # Calculate node sizes based on degrees
     degrees = [d for _, d in G.degree()]
-    if max(degrees) > 0:  # Avoid division by zero
+    if max(degrees) > 0:
         node_sizes = 0.01 + 0.04 * (np.array(degrees) / max(degrees))
     else:
         node_sizes = [0.01] * len(degrees)
@@ -144,21 +165,25 @@ def to_tikz(G, pos, title):
 
 # Generate all four networks
 networks = [
-    ("low_clust_low_hetero", "Low Clustering, Low Heterogeneity (Erdős-Rényi)", 
-     generate_erdos_renyi(n=60, m=120)),
-    ("low_clust_high_hetero", "Low Clustering, High Heterogeneity (Barabási-Albert)", 
-     generate_barabasi_albert(n=60, m=2)),
-    ("high_clust_low_hetero", "High Clustering, Low Heterogeneity (Watts-Strogatz)", 
-     generate_watts_strogatz(n=60, k=5, p=0.1)),
-    ("high_clust_high_hetero", "High Clustering, High Heterogeneity (Modular with Hubs)", 
-     generate_hyperbolic_proxy(n=60, m=120))
+    ("low_clust_low_hetero", "Low Clustering, Low Heterogeneity", 
+     generate_low_low(n=60, m=120)),
+    ("low_clust_high_hetero", "Low Clustering, High Heterogeneity", 
+     generate_low_high(n=60, m=2)),
+    ("high_clust_low_hetero", "High Clustering, Low Heterogeneity", 
+     generate_high_low(n=60, k=5, p=0.1)),
+    ("high_clust_high_hetero", "High Clustering, High Heterogeneity", 
+     generate_high_high(n=60, m=120))
 ]
 
 print("Generating networks and saving to files...")
 print("=" * 60)
 
-for filename, title, (G, pos) in networks:
-    print(f"\n{title}")
+# Create matplotlib figure with 2x2 subplots
+fig, axes = plt.subplots(2, 2, figsize=(12, 12))
+axes = axes.flatten()
+
+for idx, (filename, title, (G, pos)) in enumerate(networks):
+    print(f"\n{title.replace(chr(10), ' ')}")
     print(f"Nodes: {G.number_of_nodes()}, Edges: {G.number_of_edges()}")
     print(f"Avg Clustering: {nx.average_clustering(G):.3f}")
     
@@ -167,12 +192,19 @@ for filename, title, (G, pos) in networks:
     print(f"Degree heterogeneity (std/mean): {degree_heterogeneity:.3f}")
     print(f"Degree range: {min(degrees)} - {max(degrees)}")
     
-    # Save to file
-    tikz_code = to_tikz(G, pos, title)
+    # Plot in matplotlib
+    plot_network(G, pos, title, axes[idx])
+    
+    # Save TikZ to file
+    tikz_code = to_tikz(G, pos, title.replace('\n', ' '))
     output_file = os.path.join(script_dir, f"{filename}.tikz")
     with open(output_file, 'w') as f:
         f.write(tikz_code)
-    print(f"Saved to: {output_file}")
+    print(f"Saved TikZ to: {output_file}")
 
+plt.tight_layout()
+plt.savefig(os.path.join(script_dir, "model.png"), dpi=300, bbox_inches='tight')
 print("\n" + "=" * 60)
-print("All networks generated and saved successfully!")
+print(f"Matplotlib figure saved to: {os.path.join(script_dir, 'model.png')}")
+print("All networks generated successfully!")
+plt.show()

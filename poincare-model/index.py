@@ -1,5 +1,7 @@
 import numpy as np
 import networkx as nx
+import matplotlib.pyplot as plt
+from matplotlib.patches import Circle
 import os
 
 class HyperbolicNetwork:
@@ -99,6 +101,48 @@ class HyperbolicNetwork:
         y = r_e * np.sin(theta)
         return x, y
     
+    def plot(self, ax=None, title=None):
+        """Plot network using matplotlib"""
+        if ax is None:
+            fig, ax = plt.subplots(1, 1, figsize=(8, 8))
+        
+        # Convert coordinates to Poincaré disk
+        x, y = self.to_poincare(self.r, self.theta)
+        
+        # Set up plot
+        ax.set_aspect('equal')
+        ax.set_xlim(-1.1, 1.1)
+        ax.set_ylim(-1.1, 1.1)
+        ax.axis('off')
+        
+        if title:
+            ax.set_title(title, fontsize=10, pad=10)
+        else:
+            ax.set_title(f'Hyperbolic Network (γ={self.gamma}, N={self.N})', 
+                        fontsize=10, pad=10)
+        
+        # Draw Poincaré disk boundary
+        boundary = Circle((0, 0), 1, fill=False, edgecolor='lightgray', 
+                         linewidth=1, linestyle='--', alpha=0.5)
+        ax.add_patch(boundary)
+        
+        # Calculate node sizes based on degrees (consistent with previous model)
+        if np.max(self.degrees) > 0:
+            node_sizes = 50 + 400 * (self.degrees / np.max(self.degrees))
+        else:
+            node_sizes = np.ones(self.N) * 50
+        
+        # Draw edges
+        for i, j in self.edges:
+            ax.plot([x[i], x[j]], [y[i], y[j]], 'gray', 
+                   linewidth=0.5, alpha=0.3, zorder=1)
+        
+        # Draw nodes (steel blue like previous model)
+        ax.scatter(x, y, s=node_sizes, c='steelblue',
+                  alpha=0.7, edgecolors='white', linewidths=0.5, zorder=2)
+        
+        return ax
+    
     def export_tikz(self, filename=None):
         """Export network to TikZ format"""
         # Get the directory where this script is located
@@ -174,16 +218,38 @@ class HyperbolicNetwork:
 
 # Example usage
 if __name__ == "__main__":
+    # Get the directory where this script is located
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    
     # Run for different gamma and N values
     gammas = [2.1, 2.5, 3.0]
     N_values = [20, 50, 100, 200, 500]
     k_bar = 2.5
     
-    for gamma in gammas:
-        for N in N_values:
+    # Create a grid of plots for all networks
+    fig, axes = plt.subplots(len(gammas), len(N_values), figsize=(20, 12))
+    
+    all_networks = []
+    
+    for gamma_idx, gamma in enumerate(gammas):
+        for n_idx, N in enumerate(N_values):
             print(f"\n{'='*50}")
             print(f"Generating network with γ={gamma}, N={N}")
             
             net = HyperbolicNetwork(N=N, gamma=gamma, k_bar=k_bar)
             net.analyse_topology()
             net.export_tikz(f"network_{gamma}_{N}.tikz")
+            
+            # Plot in the grid
+            ax = axes[gamma_idx, n_idx]
+            net.plot(ax=ax, title=f'γ={gamma}, N={N}')
+            
+            all_networks.append((gamma, N, net))
+    
+    plt.tight_layout()
+    output_path = os.path.join(script_dir, "models.png")
+    plt.savefig(output_path, dpi=300, bbox_inches='tight')
+    print(f"\n{'='*50}")
+    print(f"Comparison plot saved to: {output_path}")
+    print(f"Generated {len(all_networks)} networks in total")
+    plt.show()
