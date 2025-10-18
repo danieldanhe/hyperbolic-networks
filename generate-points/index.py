@@ -7,6 +7,8 @@ import os
 # Get the directory where this script is located
 script_dir = os.path.dirname(os.path.abspath(__file__))
 
+np.random.seed(256)
+
 def generate_low_low(n=60, m=120):
     """Low clustering, low heterogeneity: Random graph"""
     G = nx.gnm_random_graph(n, m)

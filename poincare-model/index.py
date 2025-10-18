@@ -4,6 +4,8 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Circle
 import os
 
+np.random.seed(2)
+
 class HyperbolicNetwork:
     def __init__(self, N, gamma, k_bar, zeta=1.0):
         """
