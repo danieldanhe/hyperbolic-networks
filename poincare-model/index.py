@@ -192,24 +192,6 @@ class HyperbolicNetwork:
         print(f"  Mean degree: {np.mean(self.degrees):.2f}")
         print(f"  Median degree: {np.median(self.degrees):.2f}")
         
-        # Check power-law (basic test)
-        deg_counts = np.bincount(self.degrees)
-        deg_vals = np.arange(len(deg_counts))
-        
-        # Filter out zeros
-        mask = deg_counts > 0
-        deg_vals_filtered = deg_vals[mask]
-        deg_counts_filtered = deg_counts[mask]
-        
-        if len(deg_vals_filtered) > 2:
-            # Fit power law in log-log space
-            log_k = np.log(deg_vals_filtered[deg_vals_filtered > 0])
-            log_P = np.log(deg_counts_filtered[deg_vals_filtered > 0])
-            
-            if len(log_k) > 1:
-                slope, intercept = np.polyfit(log_k, log_P, 1)
-                print(f"  Estimated γ from degree distribution: {-slope:.2f} (theoretical: {self.gamma:.2f})")
-        
         # Clustering (approximate - for small networks)
         if self.N < 1000:
             G = nx.Graph()
