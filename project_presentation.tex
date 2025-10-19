@@ -226,27 +226,40 @@
 \section{The connection between the two}
 
 \begin{frame}{Network generation in hyperbolic space}
+  \onslide<1->{There are \(N\) nodes. Each node \(i\) is assigned coordinates \((r_i,\theta_i)\) on the hyperbolic plane.}
   \begin{itemize}
-    \onslide<1->{\item There are \(N\) nodes. Each node \(i\) is assigned coordinates \((r_i,\theta_i)\).}
-    \begin{itemize}
-      \item \onslide<2->{\(r_i\) is drawn from the probability density function
-      \[\rho(r)=\frac{\alpha\sinh(\alpha r)}{\cosh(\alpha L)-1}\sim e^{\alpha r}\]
-      where \(\alpha\) and \(L\) are chosen such that \(\bar k=\int_0^L\rho(r)\bar k(r)\mathop{\mathrm dr}\approx(8/\pi)Ne^{-L/2}\) and \(\gamma=2\alpha+1\).}
-      \item \onslide<3->{\(\theta_i\) is drawn uniformly from \([0,2\pi)\).}
-    \end{itemize}
-    \item \onslide<4->{For any two nodes \(i,j\), find the hyperbolic distance between them.} \onslide<5->{For large \(L,r_i,r_j\), this is approximately
-    \[x_{i,j}=r_i+r_j+2\ln\Bigl(\frac{\min(\lvert\theta_i-\theta_j\rvert,2\pi-\lvert\theta_i-\theta_j\rvert)}2\Bigr)\]}
-    \onslide<6->{Connect with the connection probability \(p(x_{i,j})\).} \onslide<7->{The simplest choice is the step function; define \(p(x_{i,j})=1\) for \(x_{i,j}\leq L\) and \(p(x_{i,j})=0\) otherwise.}
+    \item \onslide<2->{\(r_i\) is drawn from the probability density function
+    \[\rho(r)=\frac{\alpha\sinh(\alpha r)}{\cosh(\alpha L)-1}\sim e^{\alpha r}\]
+    where
+    \[\alpha=\frac{\gamma-1}2,\quad L\approx2\ln\biggl(\frac{2N}{\pi\bar k}\Bigl(\frac{\gamma-1}{\gamma-2}\Bigr)^2\biggr)\]
+    }
+    \item \onslide<3->{\(\theta_i\) is drawn uniformly from \([0,2\pi)\).}
   \end{itemize}
 \end{frame}
 
+\begin{frame}{Network generation in hyperbolic space}
+  \onslide<1->{For any two nodes \(i,j\), find the hyperbolic distance
+  \begin{align*}
+    x_{i,j}&=\arcosh\Bigl(\cosh r_i\cosh r_j-\sinh r_i\sinh r_j\cos\bigl(\min(\lvert\theta_i-\theta_j\rvert,2\pi-\lvert\theta_i-\theta_j\rvert)\bigr)\Bigr) \\
+    &\approx r_i+r_j+2\ln\Bigl(\frac{\min(\lvert\theta_i-\theta_j\rvert,2\pi-\lvert\theta_i-\theta_j\rvert)}2\Bigr)
+  \end{align*}}
+  \onslide<2->{Connect with connection probability
+  \[p(x_{i,j})=\frac1{e^{\beta(x_{i,j}-L)/2}+1}\]
+  }
+  \onslide<3->{Clustering is maximized when \(\beta\to\infty\); the probability reduces to a step function (connect only if \(x_{i,j}<L\)).} \onslide<4->{The inverse of \(\beta\) is called the \imp{temperature \(T\).}}
+
+  \onslide<5->{We operate under the \imp{cold regime} – that \(\beta>1\).}
+\end{frame}
+
 \begin{frame}{Visualizing the model}
+  \(\bar k=10,\beta=\infty\)
+
   \begin{tabular}{llllll}
     \toprule
     & \(N=20\) & \(N=50\) & \(N=100\) & \(N=200\) & \(N=500\) \\ \midrule
-    \(\gamma=2.1\) & \makecell{\input{figures/poincare_model/network_2.1_20.tikz}} & \makecell{\input{figures/poincare_model/network_2.1_50.tikz}} & \makecell{\input{figures/poincare_model/network_2.1_100.tikz}} & \makecell{\input{figures/poincare_model/network_2.1_200.tikz}} & \makecell{\input{figures/poincare_model/network_2.1_500.tikz}} \\
-    \(\gamma=2.5\) & \makecell{\input{figures/poincare_model/network_2.5_20.tikz}} & \makecell{\input{figures/poincare_model/network_2.5_50.tikz}} & \makecell{\input{figures/poincare_model/network_2.5_100.tikz}} & \makecell{\input{figures/poincare_model/network_2.5_200.tikz}} & \makecell{\input{figures/poincare_model/network_2.5_500.tikz}} \\
-    \(\gamma=3.0\) & \makecell{\input{figures/poincare_model/network_3.0_20.tikz}} & \makecell{\input{figures/poincare_model/network_3.0_50.tikz}} & \makecell{\input{figures/poincare_model/network_3.0_100.tikz}} & \makecell{\input{figures/poincare_model/network_3.0_200.tikz}} & \makecell{\input{figures/poincare_model/network_3.0_500.tikz}} \\ \bottomrule
+    \(\gamma=2.1\) & \makecell{\input{figures/poincare_model/network_gamma_2.1_20.tikz}} & \makecell{\input{figures/poincare_model/network_gamma_2.1_50.tikz}} & \makecell{\input{figures/poincare_model/network_gamma_2.1_100.tikz}} & \makecell{\input{figures/poincare_model/network_gamma_2.1_200.tikz}} & \makecell{\input{figures/poincare_model/network_gamma_2.1_500.tikz}} \\
+    \(\gamma=2.5\) & \makecell{\input{figures/poincare_model/network_gamma_2.5_20.tikz}} & \makecell{\input{figures/poincare_model/network_gamma_2.5_50.tikz}} & \makecell{\input{figures/poincare_model/network_gamma_2.5_100.tikz}} & \makecell{\input{figures/poincare_model/network_gamma_2.5_200.tikz}} & \makecell{\input{figures/poincare_model/network_gamma_2.5_500.tikz}} \\
+    \(\gamma=3.0\) & \makecell{\input{figures/poincare_model/network_gamma_3.0_20.tikz}} & \makecell{\input{figures/poincare_model/network_gamma_3.0_50.tikz}} & \makecell{\input{figures/poincare_model/network_gamma_3.0_100.tikz}} & \makecell{\input{figures/poincare_model/network_gamma_3.0_200.tikz}} & \makecell{\input{figures/poincare_model/network_gamma_3.0_500.tikz}} \\ \bottomrule
   \end{tabular}
 \end{frame}
 
