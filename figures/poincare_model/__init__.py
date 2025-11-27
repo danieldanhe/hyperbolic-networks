@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import os
 
 class HyperbolicNetwork:
-    def __init__(self, N, gamma, k_bar, beta=np.inf):
+    def __init__(self, N, gamma, k_bar, beta):
         self.N = N
         self.gamma = gamma
         self.k_bar = k_bar
