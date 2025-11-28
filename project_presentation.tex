@@ -1,6 +1,6 @@
 % !TEX TS-program = lualatex
 
-\documentclass[citation=project.bib,garamond,handout]{presentation}
+\documentclass[citation=project.bib,garamond]{presentation}
 
 \title{Networks and hyperbolic geometry}
 \subtitle{Advanced Topic Post-Euclidean Geometry \\ Project Presentation}
@@ -43,8 +43,8 @@
     \begin{multicols}{3}
       \begin{itemize}[<+->]
         \parskip=0em
-        \item Sites on the Internet
         \item Social connections (“six degrees of separation”)
+        \item Sites on the Internet
         \item Neural networks and genetic or protein interactions
         \item Road, railway, and air routes
         \item Food webs in ecosystems
@@ -187,6 +187,31 @@
 
 \section{Routing between nodes}
 
+\begin{frame}{Why does routing matter?}
+  \begin{example}
+    \begin{itemize}
+      \parskip=\dimexpr\parskip/2\relax
+      \item Social network navigation (“six degrees of separation”): You can get a letter to a stranger by relying on only friends within six moves. But how? \pause
+      \item Internet packet routing: Your laptop sends data to a server in Japan. How do routers decide the path? \pause
+      \item Neural signal routing: Your finger touches something hot. How does the signal reach the right motor neurons to pull away? \pause
+      \item Supply chain logistics: An important hub is down. How can you transport a product to a customer? \pause
+      \item Epidemic spreading control: A city experiences an outbreak of an infectious disease. Which cities should close borders to prevent spread? \pause
+      \item Music recommendations: A friend and you want a shared playlist. How does the app find artists that bridge your tastes?
+    \end{itemize}
+  \end{example}
+\end{frame}
+
+\begin{frame}{Why do we need a good algorithm?}
+  Routing requires efficient paths. But in the real world, there is no way to look at networks as a whole and find the most efficient path. \pause
+
+  How do nodes find efficient paths quickly using only
+  \begin{itemize}[<+->]
+    \item their own coordinates
+    \item their neighbours’ coordinates
+    \item the destination’s coordinates
+  \end{itemize}
+\end{frame}
+
 \begin{frame}{Greedy routing algorithm}
   We will route from node \(m\) to \(n\). Assume we know the coordinates of node \(m\), its neighbours, and its destination \(n\). \pause
 
@@ -205,10 +230,10 @@
 \begin{frame}{Bidirectional routing}
   Normal routing typically has time complexity \(\mathcal O(N)\), meaning that if the number of nodes doubles, the number of calculations required also doubles. \pause
   
-  While this is not an issue, starting routing from two nodes simultaneously and expanding both searches until they meet is surprisingly fast for hyperbolic networks, amounting to sublinear time. When \(\gamma=2.5\), bidirectional routing is \(\mathcal O(N^{2/3})\).\footcite{Bläsius_2018}
+  Starting routing from two nodes simultaneously and expanding both searches until they meet is surprisingly fast for hyperbolic networks, amounting to sublinear time. When \(\gamma=2.5\), bidirectional routing is \(\mathcal O(N^{2/3})\).\footcite{Bläsius_2018}
 \end{frame}
 
-\section{From data to a visualization}
+\section{Network embedding}
 
 \begin{frame}{Network generation in hyperbolic space: Newtonian model}
   The \imp{Newtonian-\(\mathbb S^1\) model} generate nodes along a circle and utilizes a hidden variable \imp{expected degree \(\varkappa\)} to calculate distance. \pause
@@ -240,7 +265,9 @@
   \[\varkappa_i=\varkappa_0e^{(R-r_i)/2}\quad r_i=R-2\ln\frac{\varkappa_i}{\varkappa_0}\] \pause
 
   The connection probabilities are equivalent.
-  \[\chi_{i,j}=e^{(x_{i,j}-R)/2}\]
+  \[\chi_{i,j}=e^{(x_{i,j}-R)/2}\] \pause
+
+  But the Newtonian model is easier to optimize. \(\varkappa\) has an analytical solution, and \(\vartheta\) optimizes numerically and independently. \pause That’s why we’ll embed using the Newtonian model and then convert to the Einsteinian model for routing.
 \end{frame}
 
 \begin{frame}{Network embedding in hyperbolic space: Newtonian model}
