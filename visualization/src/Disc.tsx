@@ -9,7 +9,8 @@ import {
 } from "react";
 import * as THREE from "three";
 import { Canvas, useThree } from "@react-three/fiber";
-import { Line, Text } from "@react-three/drei";
+import { Text } from "@react-three/drei";
+import { MeshLine, MeshLineMaterial } from "three.meshline";
 
 import { type Edge, type EmbeddedNode } from "./embedding";
 import { type RoutingResult } from "./routing";
@@ -199,24 +200,10 @@ const Edge = ({
   isForwardPath: boolean;
   isBackwardPath: boolean;
 }) => {
-  const thicknesses = useMemo(() => {
-    return points.map((p) => {
-      const r = Math.sqrt(p.x * p.x + p.y * p.y);
-      const baseThickness = isOnPath ? 3 : 1.5;
-      const thickness = baseThickness * (1 - r * r);
-      return thickness;
-    });
-  }, [points, isOnPath]);
-
-  const widthAttribute = useMemo(() => {
-    const interleavedWidths = [];
-    for (const width of thicknesses) {
-      interleavedWidths.push(width, width, width);
-    }
-    return new THREE.BufferAttribute(new Float32Array(interleavedWidths), 3);
-  }, [thicknesses]);
-
   let colour = "#000000";
+  let opacity = 0.2;
+  let lineWidth = 0.005;
+
   if (isForwardPath && isBackwardPath) {
     colour = "#BF360C";
   } else if (isForwardPath) {
@@ -226,22 +213,38 @@ const Edge = ({
   } else if (isOnPath) {
     colour = "#F57F17";
   }
+  if (isOnPath) {
+    opacity = 1;
+    lineWidth = 0.01;
+  }
+
+  const linePoints = useMemo(() => {
+    const arr: number[] = [];
+    points.forEach((p) => arr.push(p.x, p.y, p.z));
+    return new Float32Array(arr);
+  }, [points]);
+
+  const meshLine = useMemo(() => {
+    const ml = new MeshLine();
+    ml.setPoints(linePoints);
+    return ml;
+  }, [linePoints]);
+
+  const material = useMemo(() => {
+    return new MeshLineMaterial({
+      color: new THREE.Color(colour),
+      lineWidth,
+      transparent: true,
+      opacity,
+      depthTest: true,
+    });
+  }, [colour, lineWidth, opacity]);
 
   return (
-    <Line
-      points={points}
-      color={colour}
-      lineWidth={isOnPath ? 3 : 1}
-      dashed={false}
-      opacity={0.5}
-    >
-      <bufferGeometry attach="geometry">
-        <bufferAttribute
-          attach="attributes-instanceStart"
-          args={[widthAttribute.array, widthAttribute.itemSize]}
-        />
-      </bufferGeometry>
-    </Line>
+    <mesh>
+      <primitive object={meshLine} />
+      <primitive object={material} attach="material" />
+    </mesh>
   );
 };
 
@@ -404,7 +407,7 @@ const Scene = ({
 
   const pathNodeSet = useMemo(() => {
     if (!routingResult || !routingResult.success) return new Set<string>();
-    return new Set(routingResult.path.map(node => node.id));
+    return new Set(routingResult.path.map((node) => node.id));
   }, [routingResult]);
 
   const edgeGeometries = useMemo(() => {
@@ -567,10 +570,13 @@ const Disc = ({
     [panR, panTheta, setPanR, setPanTheta]
   );
 
-  const handleZoom = useCallback((delta: number) => {
-    const factor = Math.exp(delta);
-    setZoom((prev) => Math.max(0.02, Math.min(50, prev * factor)));
-  }, [setZoom]);
+  const handleZoom = useCallback(
+    (delta: number) => {
+      const factor = Math.exp(delta);
+      setZoom((prev) => Math.max(0.02, Math.min(50, prev * factor)));
+    },
+    [setZoom]
+  );
 
   return (
     <Canvas

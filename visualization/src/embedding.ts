@@ -440,7 +440,7 @@ export async function embedNetwork(
   );
   const thetas = new Map<string, number>();
 
-  const phase1Count = Math.min(500, N);
+  const phase1Count = Math.min(100, N);
 
   for (let i = 0; i < phase1Count; i++) {
     const angle = -Math.PI + (2 * Math.PI * i) / phase1Count;
@@ -470,7 +470,7 @@ export async function embedNetwork(
   let processed = phase1Count;
 
   while (processed < N) {
-    const batchEnd = Math.min(processed + 100, N);
+    const batchEnd = Math.min(processed + 20, N);
     const batchNodes = sortedNodes.slice(processed, batchEnd);
 
     for (const node of batchNodes) {
