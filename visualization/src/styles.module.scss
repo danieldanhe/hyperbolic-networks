@@ -1,0 +1,331 @@
+$color-primary-light: #fafafa;
+$color-primary-dark: #23373b;
+$color-accent-light: #eb811b;
+$color-accent-dark: #ee913a;
+
+$spacing-xs: 0.25rem;
+$spacing-sm: 0.5rem;
+$spacing-md: 1rem;
+$spacing-lg: 1.5rem;
+
+$sidebar-width: 360px;
+$label-width-short: 40px;
+$label-width-long: 150px;
+$input-height: 1.5rem;
+$border-radius: 0;
+
+$font-size-base: 1rem;
+$font-size-sm: 0.75rem;
+$font-size-lg: 1.5rem;
+$font-weight-regular: 300;
+$font-weight-bold: 600;
+
+$opacity-field: 0.1;
+$opacity-hover: 0.2;
+$opacity-highlight: 0.4;
+$opacity-muted: 0.6;
+
+@mixin muted {
+  margin: 0;
+  color: rgba($color-primary-light, $opacity-muted);
+  @media (prefers-color-scheme: light) {
+    color: rgba($color-primary-dark, $opacity-muted);
+  }
+}
+
+@mixin reset-box-model {
+  padding: 0;
+  border: 0;
+  margin: 0;
+}
+
+@mixin flex-column {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: stretch;
+}
+
+@mixin flex-row {
+  display: flex;
+  flex-direction: row;
+  justify-content: flex-start;
+  align-items: baseline;
+}
+
+@mixin input-styles {
+  font: inherit;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  border: 0;
+  border-radius: $border-radius;
+  height: $input-height;
+  padding: 0 $spacing-xs;
+  overflow-x: auto;
+  overflow-y: hidden;
+  caret-color: $color-accent-dark;
+  background-color: rgba($color-primary-light, $opacity-field);
+  &:hover {
+    background-color: rgba($color-primary-light, $opacity-hover);
+  }
+  @media (prefers-color-scheme: light) {
+    caret-color: $color-accent-light;
+    background-color: rgba($color-primary-dark, $opacity-field);
+    &:hover {
+      background-color: rgba($color-primary-dark, $opacity-hover);
+    }
+  }
+  &[type="number"] {
+    -moz-appearance: textfield;
+    appearance: textfield;
+    &::-webkit-outer-spin-button,
+    &::-webkit-inner-spin-button {
+      -webkit-appearance: none;
+    }
+  }
+}
+
+@mixin popup-styles {
+  padding: 0;
+  background-color: $color-primary-dark;
+  color: $color-primary-light;
+  border: 1px solid rgba($color-primary-light, $opacity-muted);
+  @media (prefers-color-scheme: light) {
+    background-color: $color-primary-light;
+    color: $color-primary-dark;
+    border-color: rgba($color-primary-dark, $opacity-muted);
+  }
+  overflow: auto;
+  max-height: min(var(--available-height), 400px);
+  min-width: var(--anchor-width);
+  max-width: var(--available-width);
+  overscroll-behavior: contain;
+  transform-origin: var(--transform-origin);
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: stretch;
+}
+
+@mixin popupItem-styles {
+  cursor: pointer;
+  outline: 0;
+  user-select: none;
+  padding: 0 $spacing-md;
+  height: $input-height;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  &[data-highlighted] {
+    background-color: rgba($color-primary-light, $opacity-hover);
+    &[data-selected] {
+      background-color: rgba($color-accent-light, $opacity-highlight);
+    }
+    @media (prefers-color-scheme: light) {
+      background-color: rgba($color-primary-dark, $opacity-hover);
+      &[data-selected] {
+        background-color: rgba($color-accent-dark, $opacity-highlight);
+      }
+    }
+  }
+  &[data-selected] {
+    font-weight: $font-weight-bold;
+    background-color: rgba($color-accent-light, $opacity-hover);
+    @media (prefers-color-scheme: light) {
+      background-color: rgba($color-accent-dark, $opacity-hover);
+    }
+  }
+}
+
+@mixin link-styles {
+  &,
+  &:visited {
+    color: inherit;
+    text-decoration: underline 0.05em;
+  }
+  &:hover,
+  &:focus,
+  &:active {
+    color: $color-accent-dark;
+    @media (prefers-color-scheme: light) {
+      color: $color-accent-light;
+    }
+  }
+  &:active {
+    text-decoration: none;
+  }
+}
+
+@mixin border-top-accent {
+  border-top: 1px solid $color-accent-dark;
+  @media (prefers-color-scheme: light) {
+    border-color: $color-accent-light;
+  }
+}
+
+.thinSpace {
+  margin-right: 0.16667em;
+}
+
+.screenReaderNotice {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+.pageTitle {
+  font-size: inherit;
+  font-weight: $font-weight-bold;
+  margin: 0 0 $spacing-sm;
+}
+
+.screenReaderDescription {
+  margin: 0;
+}
+
+.toolbar {
+  padding: $spacing-sm $spacing-md;
+  flex: 0 0 $sidebar-width;
+  height: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.section {
+  @include flex-column;
+  gap: $spacing-sm;
+  padding: $spacing-md $spacing-sm;
+  &:not(:first-child) {
+    @include border-top-accent;
+  }
+}
+
+.sectionHeading {
+  font-size: $font-size-lg;
+  font-weight: $font-weight-bold;
+  margin: 0;
+}
+
+.fieldGroup {
+  @include reset-box-model;
+  width: 100%;
+}
+
+.groupLabel {
+  @include reset-box-model;
+  display: block;
+  width: 100%;
+  padding: 0 0 $spacing-xs;
+  font-size: inherit;
+  font-weight: $font-weight-bold;
+}
+
+.fieldList,
+.statsList {
+  @include reset-box-model;
+  @include flex-column;
+  list-style-type: none;
+}
+
+.fieldList {
+  gap: $spacing-xs;
+}
+
+.formRow {
+  @include flex-row;
+  gap: 0;
+  width: 100%;
+}
+
+.statLabel,
+.fieldLabelShort {
+  font-weight: $font-weight-regular;
+}
+
+.statLabel {
+  flex: 0 0 $label-width-long;
+}
+
+.fieldLabelShort {
+  flex: 0 0 $label-width-short;
+}
+
+.formField .fieldLabel {
+  display: block;
+  width: 100%;
+  padding: 0 0 $spacing-xs;
+  border: 0;
+  margin: 0;
+  font-weight: $font-weight-bold;
+}
+
+.inputWrapper {
+  @include reset-box-model;
+  overflow: visible;
+  flex: 1;
+}
+
+.inputControl {
+  @include input-styles;
+}
+
+.inputHelp {
+  @include muted;
+  font-size: $font-size-sm;
+}
+
+.popupPositioner {
+  outline: 0;
+}
+
+.popup {
+  @include popup-styles;
+}
+
+.noResults {
+  @include muted;
+  padding: $spacing-sm $spacing-md;
+}
+
+.popupList {
+  padding: $spacing-sm 0;
+}
+
+.popupItem {
+  @include popupItem-styles;
+}
+
+.statValue {
+  @include reset-box-model;
+  flex: 1;
+  white-space: nowrap;
+}
+
+.linkGroup,
+.licenceText {
+  margin: 0;
+}
+
+.externalLink {
+  @include link-styles;
+}
+
+.licenceText {
+  @include muted;
+  font-size: $font-size-sm;
+}
+
+.visualization {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 40px;
+}

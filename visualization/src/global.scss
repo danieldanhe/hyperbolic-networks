@@ -1,0 +1,45 @@
+:root {
+  font-family: neue-frutiger-world, neue frutiger world, neue frutiger,
+    frutiger, frutiger linotype, frutiger next, myriad pro, myriad, segoe ui, segoe,
+    noto sans, open sans, roboto, helvetica neue, helvetica, arial, sans-serif;
+  font-size: 20px;
+  font-weight: 300;
+  line-height: 1.5;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  color-scheme: light dark;
+  color: #fafafa;
+  background-color: #23373b;
+  @media (prefers-color-scheme: light) {
+    color: #23373b;
+    background-color: #fafafa;
+  }
+  height: 100%;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+}
+
+#root {
+  display: flex;
+  flex-direction: row;
+  justify-content: stretch;
+}
+
+:focus-visible {
+  outline: 1px solid #ee913a;
+  @media (prefers-color-scheme: light) {
+    outline-color: #eb811b;
+  }
+  outline-offset: 2px;
+}
+
+* {
+  box-sizing: border-box;
+}
