@@ -175,7 +175,7 @@ const Node = ({
         <Text
           position={[0, 0, 0.2]}
           fontSize={textSize}
-          color="#000"
+          color="#000000"
           anchorX="center"
           anchorY="middle"
           whiteSpace="nowrap"
@@ -216,7 +216,7 @@ const Edge = ({
     return new THREE.BufferAttribute(new Float32Array(interleavedWidths), 3);
   }, [thicknesses]);
 
-  let colour = "#000";
+  let colour = "#000000";
   if (isForwardPath && isBackwardPath) {
     colour = "#BF360C";
   } else if (isForwardPath) {
@@ -233,6 +233,7 @@ const Edge = ({
       color={colour}
       lineWidth={isOnPath ? 3 : 1}
       dashed={false}
+      opacity={0.5}
     >
       <bufferGeometry attach="geometry">
         <bufferAttribute

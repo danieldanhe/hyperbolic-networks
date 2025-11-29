@@ -86,10 +86,12 @@ const CoordinateInput = ({
 );
 
 const StatItem = ({
+  degrees,
   label,
   value,
   numberType,
 }: {
+  degrees?: boolean;
   label: string | ReactNode;
   value: string | number;
   numberType?: "integer" | "decimal";
@@ -106,7 +108,7 @@ const StatItem = ({
       const mantissa = (absNum / 10 ** exponent).toFixed(6);
       const [intPart, fracPart] = mantissa.split(".");
       const groupedFrac = fracPart.replace(/(\d{3})(?=\d)/g, `$1${separator}`);
-      const formatted = `${intPart}.${groupedFrac}e+${exponent}`;
+      let formatted = `${intPart}.${groupedFrac}e+${exponent}`;
       let exponentOrdinal;
       const tenModulo = exponent % 10;
       const hundredModulo = exponent % 100;
@@ -117,7 +119,11 @@ const StatItem = ({
       else if (tenModulo === 3 && hundredModulo !== 13)
         exponentOrdinal = exponent + "rd";
       else exponentOrdinal = exponent + "th";
-      const accessible = `${mantissa} times 10 to the ${exponentOrdinal} power`;
+      let accessible = `${mantissa} times 10 to the ${exponentOrdinal} power`;
+      if (degrees) {
+        formatted += "°";
+        accessible += " degrees";
+      }
       return { formatted, accessible };
     }
   };
@@ -131,8 +137,12 @@ const StatItem = ({
     const [intStr, fracStr = ""] = rounded.split(".");
     const groupedInt = intStr.replace(/\B(?=(\d{3})+(?!\d))/g, separator);
     const groupedFrac = fracStr.replace(/(\d{3})(?=\d)/g, `$1${separator}`);
-    const formatted = fracStr ? `${groupedInt}.${groupedFrac}` : groupedInt;
-    const accessible = rounded;
+    let formatted = fracStr ? `${groupedInt}.${groupedFrac}` : groupedInt;
+    let accessible = rounded;
+    if (degrees) {
+      formatted += "°";
+      accessible += " degrees";
+    }
     return { formatted, accessible };
   };
 
@@ -395,7 +405,6 @@ const ViewSection = ({
           value={round(panR, 4)}
         />
         <CoordinateInput
-          helpText="in degrees"
           label="θ"
           onValueChange={(newValue) =>
             setPanTheta(newValue ? (+newValue * Math.PI) / 180 : 0)
@@ -434,9 +443,10 @@ const ViewSection = ({
               value={selectedNode.r}
             />
             <StatItem
+              degrees
               label={<var>θ</var>}
               numberType="decimal"
-              value={selectedNode.theta}
+              value={(selectedNode.theta * 180) / Math.PI}
             />
             <StatItem
               label={<var>κ</var>}
