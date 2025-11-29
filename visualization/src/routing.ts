@@ -24,7 +24,7 @@ function hyperbolicDistance(node1: EmbeddedNode, node2: EmbeddedNode): number {
 }
 
 function findClosestNeighbour(
-  currentNode: EmbeddedNode,
+  _currentNode: EmbeddedNode,
   targetNode: EmbeddedNode,
   neighbours: EmbeddedNode[],
   visited: Set<string>,

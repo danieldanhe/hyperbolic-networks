@@ -618,13 +618,12 @@ const App = () => {
   const [selectedDataset, setSelectedDataset] = useState<Dataset | null>(null);
   const [csvContent, setCsvContent] = useState<string>("");
 
-  // Load datasets list
   useEffect(() => {
     const loadDatasets = async () => {
       try {
         const response = await fetch("/datasets.csv");
         const csvText = await response.text();
-        const lines = csvText.split("\n").slice(1); // Skip header
+        const lines = csvText.split("\n").slice(1);
         const loadedDatasets: Dataset[] = [];
 
         for (const line of lines) {
@@ -635,9 +634,6 @@ const App = () => {
         }
 
         setDatasets(loadedDatasets);
-        if (loadedDatasets.length > 0) {
-          setSelectedDataset(loadedDatasets[0]);
-        }
       } catch (error) {
         console.error("Failed to load datasets:", error);
       }
@@ -646,7 +642,6 @@ const App = () => {
     loadDatasets();
   }, []);
 
-  // Load selected dataset content
   useEffect(() => {
     const loadDatasetContent = async () => {
       if (!selectedDataset) return;
