@@ -1,6 +1,5 @@
 import {
   type Dispatch,
-  type FC,
   type SetStateAction,
   useCallback,
   useEffect,
@@ -12,20 +11,8 @@ import * as THREE from "three";
 import { Canvas, useThree } from "@react-three/fiber";
 import { Line, Text } from "@react-three/drei";
 
-import { embedNetwork } from "./embedding";
-
-type EmbeddedNode = {
-  id: string;
-  r: number;
-  theta: number;
-  kappa: number;
-  degree: number;
-};
-
-type Edge = {
-  source: string;
-  target: string;
-};
+import { type Edge, type EmbeddedNode } from "./embedding";
+import { type RoutingResult } from "./routing";
 
 function euclideanToHyperbolic(
   x: number,
@@ -110,35 +97,60 @@ function generateGeodesicPoints(
   return points;
 }
 
-// Inside the Node component definition...
+let minimumDegree = 1;
+let maximumDegree = 10;
 
-const Node: FC<{
+const Node = ({
+  node,
+  position,
+  isSelected,
+  isHovered,
+  isOnPath,
+  isMeetingPoint,
+  isRouteEndpoint,
+  onSelect,
+  onHover,
+}: {
   node: EmbeddedNode;
   position: { x: number; y: number };
   isSelected: boolean;
   isHovered: boolean;
+  isOnPath: boolean;
+  isMeetingPoint: boolean;
+  isRouteEndpoint: boolean | undefined;
   onSelect: () => void;
   onHover: (hovering: boolean) => void;
-}> = ({ node, position, isSelected, isHovered, onSelect, onHover }) => {
+}) => {
   const { gl } = useThree();
 
-  const hyperbolicSize = 0.5 + node.degree * 0.2;
+  const hyperbolicSize =
+    0.8 +
+    (3.2 * Math.log(node.degree / minimumDegree)) /
+      Math.log(maximumDegree / minimumDegree);
   const rEuclidean = Math.sqrt(
     position.x * position.x + position.y * position.y
   );
-  
+
   const scaleFactor = 1 - rEuclidean * rEuclidean;
   const size = Math.max(0.001, (hyperbolicSize * scaleFactor) / 20);
 
   const textSize = size * 0.8;
 
-  const hideText = rEuclidean > 0.95 || size < 0.01; 
+  const hideText = rEuclidean > 0.95 || size < 0.01;
 
-  const color = isSelected ? "#ef4444" : isHovered ? "#60a5fa" : "#3b82f6";
+  let colour = isHovered ? "#42A5F5" : "#90CAF9";
+  if (isMeetingPoint) {
+    colour = isHovered ? "#FFA726" : "#FFCC80";
+  } else if (isRouteEndpoint) {
+    colour = isHovered ? "#AB47BC" : "#CE93D8";
+  } else if (isOnPath) {
+    colour = isHovered ? "#66BB6A" : "#A5D6A7";
+  } else if (isSelected) {
+    colour = isHovered ? "#EF5350" : "#EF9A9A";
+  }
 
   return (
     <group position={[position.x, position.y, 0.1]}>
-      {/* Node Mesh */}
       <mesh
         onClick={(e) => {
           e.stopPropagation();
@@ -156,9 +168,9 @@ const Node: FC<{
         }}
       >
         <circleGeometry args={[size, 32]} />
-        <meshBasicMaterial color={color} side={THREE.DoubleSide} />
+        <meshBasicMaterial color={colour} side={THREE.DoubleSide} />
       </mesh>
-      
+
       {!hideText && (
         <Text
           position={[0, 0, 0.2]}
@@ -172,21 +184,29 @@ const Node: FC<{
           {node.id}
         </Text>
       )}
-      
     </group>
   );
 };
 
-const Edge: FC<{
+const Edge = ({
+  points,
+  isOnPath,
+  isForwardPath,
+  isBackwardPath,
+}: {
   points: THREE.Vector3[];
-}> = ({ points }) => {
+  isOnPath: boolean;
+  isForwardPath: boolean;
+  isBackwardPath: boolean;
+}) => {
   const thicknesses = useMemo(() => {
     return points.map((p) => {
       const r = Math.sqrt(p.x * p.x + p.y * p.y);
-      const thickness = 1.5 * (1 - r * r);
+      const baseThickness = isOnPath ? 3 : 1.5;
+      const thickness = baseThickness * (1 - r * r);
       return thickness;
     });
-  }, [points]);
+  }, [points, isOnPath]);
 
   const widthAttribute = useMemo(() => {
     const interleavedWidths = [];
@@ -196,8 +216,24 @@ const Edge: FC<{
     return new THREE.BufferAttribute(new Float32Array(interleavedWidths), 3);
   }, [thicknesses]);
 
+  let colour = "#000";
+  if (isForwardPath && isBackwardPath) {
+    colour = "#BF360C";
+  } else if (isForwardPath) {
+    colour = "#F57F17";
+  } else if (isBackwardPath) {
+    colour = "#E65100";
+  } else if (isOnPath) {
+    colour = "#F57F17";
+  }
+
   return (
-    <Line points={points} color="#000" lineWidth={1} dashed={false}>
+    <Line
+      points={points}
+      color={colour}
+      lineWidth={isOnPath ? 3 : 1}
+      dashed={false}
+    >
       <bufferGeometry attach="geometry">
         <bufferAttribute
           attach="attributes-instanceStart"
@@ -208,7 +244,7 @@ const Edge: FC<{
   );
 };
 
-const DiscBoundary: FC = () => {
+const DiscBoundary = () => {
   return (
     <group>
       <mesh position={[0, 0, -0.1]}>
@@ -223,10 +259,13 @@ const DiscBoundary: FC = () => {
   );
 };
 
-const CameraController: FC<{
+const CameraController = ({
+  onPan,
+  onZoom,
+}: {
   onPan: (dx: number, dy: number) => void;
   onZoom: (delta: number) => void;
-}> = ({ onPan, onZoom }) => {
+}) => {
   const { gl } = useThree();
 
   const isPanning = useRef(false);
@@ -285,23 +324,12 @@ const CameraController: FC<{
   return null;
 };
 
-const Scene: FC<{
-  nodes: EmbeddedNode[];
-  edges: Edge[];
-  selectedNode: string | null;
-  hoveredNode: string | null;
-  onSelectNode: (nodeId: string | null) => void;
-  onHoverNode: (nodeId: string | null) => void;
-  panR: number;
-  panTheta: number;
-  zoom: number;
-  onPan: (deltaR: number, deltaTheta: number) => void;
-  onZoom: (delta: number) => void;
-}> = ({
+const Scene = ({
   nodes,
   edges,
   selectedNode,
   hoveredNode,
+  routingResult,
   onSelectNode,
   onHoverNode,
   panR,
@@ -309,6 +337,19 @@ const Scene: FC<{
   zoom,
   onPan,
   onZoom,
+}: {
+  nodes: EmbeddedNode[];
+  edges: Edge[];
+  selectedNode: EmbeddedNode | null;
+  hoveredNode: EmbeddedNode | null;
+  routingResult: RoutingResult | null;
+  onSelectNode: (node: EmbeddedNode | null) => void;
+  onHoverNode: (node: EmbeddedNode | null) => void;
+  panR: number;
+  panTheta: number;
+  zoom: number;
+  onPan: (deltaR: number, deltaTheta: number) => void;
+  onZoom: (delta: number) => void;
 }) => {
   const nodePositions = useMemo(() => {
     const positions = new Map<string, { x: number; y: number }>();
@@ -321,6 +362,50 @@ const Scene: FC<{
     return positions;
   }, [nodes, panR, panTheta, zoom]);
 
+  const pathEdgeSet = useMemo(() => {
+    if (!routingResult || !routingResult.success) return new Set<string>();
+
+    const edgeSet = new Set<string>();
+    for (let i = 0; i < routingResult.path.length - 1; i++) {
+      const a = routingResult.path[i].id;
+      const b = routingResult.path[i + 1].id;
+      edgeSet.add(`${a}-${b}`);
+      edgeSet.add(`${b}-${a}`);
+    }
+    return edgeSet;
+  }, [routingResult]);
+
+  const forwardEdgeSet = useMemo(() => {
+    if (!routingResult || !routingResult.success) return new Set<string>();
+
+    const edgeSet = new Set<string>();
+    for (let i = 0; i < routingResult.forwardPath.length - 1; i++) {
+      const a = routingResult.forwardPath[i].id;
+      const b = routingResult.forwardPath[i + 1].id;
+      edgeSet.add(`${a}-${b}`);
+      edgeSet.add(`${b}-${a}`);
+    }
+    return edgeSet;
+  }, [routingResult]);
+
+  const backwardEdgeSet = useMemo(() => {
+    if (!routingResult || !routingResult.success) return new Set<string>();
+
+    const edgeSet = new Set<string>();
+    for (let i = 0; i < routingResult.backwardPath.length - 1; i++) {
+      const a = routingResult.backwardPath[i].id;
+      const b = routingResult.backwardPath[i + 1].id;
+      edgeSet.add(`${a}-${b}`);
+      edgeSet.add(`${b}-${a}`);
+    }
+    return edgeSet;
+  }, [routingResult]);
+
+  const pathNodeSet = useMemo(() => {
+    if (!routingResult || !routingResult.success) return new Set<string>();
+    return new Set(routingResult.path.map(node => node.id));
+  }, [routingResult]);
+
   const edgeGeometries = useMemo(() => {
     return edges
       .map((edge) => {
@@ -328,29 +413,51 @@ const Scene: FC<{
         const targetPos = nodePositions.get(edge.target);
 
         if (sourcePos && targetPos) {
+          const edgeKey = `${edge.source}-${edge.target}`;
+          const isOnPath = pathEdgeSet.has(edgeKey);
+          const isForward = forwardEdgeSet.has(edgeKey);
+          const isBackward = backwardEdgeSet.has(edgeKey);
+
           return {
-            key: `${edge.source}-${edge.target}`,
+            key: edgeKey,
             points: generateGeodesicPoints(
               sourcePos.x,
               sourcePos.y,
               targetPos.x,
               targetPos.y
             ),
+            isOnPath,
+            isForward,
+            isBackward,
           };
         }
         return null;
       })
-      .filter(Boolean) as { key: string; points: THREE.Vector3[] }[];
-  }, [edges, nodePositions]);
+      .filter(Boolean) as {
+      key: string;
+      points: THREE.Vector3[];
+      isOnPath: boolean;
+      isForward: boolean;
+      isBackward: boolean;
+    }[];
+  }, [edges, nodePositions, pathEdgeSet, forwardEdgeSet, backwardEdgeSet]);
 
   return (
     <>
       <DiscBoundary />
 
       <group>
-        {edgeGeometries.map(({ key, points }) => (
-          <Edge key={key} points={points} />
-        ))}
+        {edgeGeometries.map(
+          ({ key, points, isOnPath, isForward, isBackward }) => (
+            <Edge
+              key={key}
+              points={points}
+              isOnPath={isOnPath}
+              isForwardPath={isForward}
+              isBackwardPath={isBackward}
+            />
+          )
+        )}
       </group>
 
       <group>
@@ -358,17 +465,25 @@ const Scene: FC<{
           const position = nodePositions.get(node.id);
           if (!position) return null;
 
+          const isMeetingPoint = routingResult?.meetingNode === node;
+          const isOnPath = pathNodeSet.has(node.id);
+          const isRouteEndpoint =
+            routingResult?.success &&
+            (node === routingResult.path[0] ||
+              node === routingResult.path[routingResult.path.length - 1]);
+
           return (
             <Node
               key={node.id}
               node={node}
               position={position}
-              isSelected={selectedNode === node.id}
-              isHovered={hoveredNode === node.id}
-              onSelect={() =>
-                onSelectNode(selectedNode === node.id ? null : node.id)
-              }
-              onHover={(hovering) => onHoverNode(hovering ? node.id : null)}
+              isSelected={selectedNode === node}
+              isHovered={hoveredNode === node}
+              isOnPath={isOnPath}
+              isMeetingPoint={isMeetingPoint}
+              isRouteEndpoint={isRouteEndpoint}
+              onSelect={() => onSelectNode(selectedNode === node ? null : node)}
+              onHover={(hovering) => onHoverNode(hovering ? node : null)}
             />
           );
         })}
@@ -406,34 +521,31 @@ const ViewportSynchronizer = () => {
 };
 
 const Disc = ({
+  nodes,
+  edges,
   panR,
   setPanR,
   panTheta,
   setPanTheta,
   zoom,
   setZoom,
+  selectedNode,
+  setSelectedNode,
+  routingResult,
 }: {
+  nodes: EmbeddedNode[];
+  edges: Edge[];
   panR: number;
   setPanR: Dispatch<SetStateAction<number>>;
   panTheta: number;
   setPanTheta: Dispatch<SetStateAction<number>>;
   zoom: number;
   setZoom: Dispatch<SetStateAction<number>>;
+  selectedNode: EmbeddedNode | null;
+  setSelectedNode: Dispatch<SetStateAction<EmbeddedNode | null>>;
+  routingResult: RoutingResult | null;
 }) => {
-  const csvContent = `source,target
-A,B
-B,C
-C,A
-A,D
-D,E
-E,A`;
-
-  embedNetwork(csvContent).then((nodes) => {
-    console.log(JSON.stringify(nodes, null, 2));
-  });
-
-  const [selectedNode, setSelectedNode] = useState<string | null>(null);
-  const [hoveredNode, setHoveredNode] = useState<string | null>(null);
+  const [hoveredNode, setHoveredNode] = useState<EmbeddedNode | null>(null);
 
   const handlePan = useCallback(
     (dx: number, dy: number) => {
@@ -456,32 +568,8 @@ E,A`;
 
   const handleZoom = useCallback((delta: number) => {
     const factor = Math.exp(delta);
-
-    setZoom((prev) => +Math.max(0.02, Math.min(50, prev * factor)));
-  }, []);
-
-  const sampleNodes: EmbeddedNode[] = [
-    { id: "This is a very long label to test what happens.", r: 0.5, theta: 0, degree: 4, kappa: 2.4 },
-    { id: "B", r: 1.2, theta: Math.PI / 3, degree: 2, kappa: 1.6 },
-    { id: "C", r: 1.2, theta: (2 * Math.PI) / 3, degree: 2, kappa: 1.6 },
-    { id: "D", r: 1.2, theta: Math.PI, degree: 2, kappa: 1.6 },
-    { id: "E", r: 1.2, theta: (-2 * Math.PI) / 3, degree: 2, kappa: 1.6 },
-    { id: "F", r: 1.2, theta: -Math.PI / 3, degree: 2, kappa: 1.6 },
-    { id: "G", r: 1.8, theta: Math.PI / 6, degree: 1, kappa: 1.2 },
-    { id: "H", r: 1.8, theta: (5 * Math.PI) / 6, degree: 1, kappa: 1.2 },
-  ];
-
-  const sampleEdges: Edge[] = [
-    { source: "This is a very long label to test what happens.", target: "B" },
-    { source: "This is a very long label to test what happens.", target: "C" },
-    { source: "This is a very long label to test what happens.", target: "D" },
-    { source: "This is a very long label to test what happens.", target: "E" },
-    { source: "This is a very long label to test what happens.", target: "F" },
-    { source: "B", target: "G" },
-    { source: "C", target: "H" },
-    { source: "B", target: "C" },
-    { source: "D", target: "E" },
-  ];
+    setZoom((prev) => Math.max(0.02, Math.min(50, prev * factor)));
+  }, [setZoom]);
 
   return (
     <Canvas
@@ -491,12 +579,13 @@ E,A`;
     >
       <ViewportSynchronizer />
       <Scene
-        nodes={sampleNodes}
-        edges={sampleEdges}
-        selectedNode={selectedNode}
+        nodes={nodes}
+        edges={edges}
         hoveredNode={hoveredNode}
-        onSelectNode={setSelectedNode}
         onHoverNode={setHoveredNode}
+        selectedNode={selectedNode}
+        onSelectNode={setSelectedNode}
+        routingResult={routingResult}
         panR={panR}
         panTheta={panTheta}
         zoom={zoom}

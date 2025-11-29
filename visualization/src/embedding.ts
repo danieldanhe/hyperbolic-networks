@@ -1,13 +1,11 @@
-type Edge = { source: string; target: string };
-
+export type Edge = { source: string; target: string };
 export type EmbeddedNode = {
   id: string;
   r: number;
   theta: number;
-  degree: number;
   kappa: number;
+  degree: number;
 };
-
 export type NetworkStats = {
   N: number;
   kBar: number;
@@ -18,7 +16,7 @@ export type NetworkStats = {
   kappa0: number;
 };
 
-function parseCSV(csv: string): Edge[] {
+export function parseCSV(csv: string): Edge[] {
   const lines = csv.trim().split("\n");
   const edges: Edge[] = [];
 
@@ -429,12 +427,6 @@ export async function embedNetwork(
   const kappa0 = (kBar * (gamma - 2)) / (gamma - 1);
   const mu = beta / (2 * Math.PI * kBar * Math.sin(Math.PI / beta));
   const R = 2 * Math.log(N / (Math.PI * mu * kappa0 * kappa0));
-
-  console.log(
-    `Network parameters: N=${N}, k̄=${kBar.toFixed(2)}, γ=${gamma.toFixed(
-      2
-    )}, C=${clustering.toFixed(3)}, β=${beta.toFixed(2)}, R=${R.toFixed(2)}`
-  );
 
   const kappas = new Map<string, number>();
   for (const node of nodes) {

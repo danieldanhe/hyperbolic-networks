@@ -4,6 +4,7 @@ import {
   type SetStateAction,
   Fragment,
   StrictMode,
+  useEffect,
   useId,
   useMemo,
   useState,
@@ -18,17 +19,25 @@ import { List, type RowComponentProps, useListRef } from "react-window";
 import { round } from "mathjs";
 
 import Disc from "./Disc";
+import {
+  type Edge,
+  type EmbeddedNode,
+  type NetworkStats,
+  embedNetwork,
+  parseCSV,
+} from "./embedding";
+import { bidirectionalGreedyRouting, type RoutingResult } from "./routing";
+
+interface Dataset {
+  id: string;
+  filename: string;
+}
 
 const useComboboxIds = () => {
   const labelId = useId();
   const inputId = useId();
   return { labelId, inputId };
 };
-
-const placeholderData = Array.from({ length: 10000 }, (_, i) => {
-  const indexLabel = String(i + 1).padStart(4, "0");
-  return { id: String(i), value: `Item ${indexLabel}` };
-});
 
 const ScreenReaderNotice = () => (
   <section className={styles.screenReaderNotice}>
@@ -83,7 +92,7 @@ const StatItem = ({
 }: {
   label: string | ReactNode;
   value: string | number;
-  numberType?: "whole" | "decimal";
+  numberType?: "integer" | "decimal";
 }) => {
   const formatWholeNumber = (num: number) => {
     const separator = "\u2009";
@@ -128,7 +137,7 @@ const StatItem = ({
   };
 
   const toDisplay: { formatted: string; accessible: string } =
-    typeof value === "number" && numberType === "whole"
+    typeof value === "number" && numberType === "integer"
       ? formatWholeNumber(value)
       : typeof value === "number" && numberType === "decimal"
       ? formatDecimalNumber(value)
@@ -151,13 +160,13 @@ const StatItem = ({
   );
 };
 
-const ITEM_HEIGHT = 30;
-
 const RowComponent = ({
   index,
   style,
   filteredItems,
-}: RowComponentProps<{ filteredItems: { id: string; value: string }[] }>) => {
+}: RowComponentProps<{
+  filteredItems: { id: string; [key: string]: any }[];
+}>) => {
   const item = filteredItems[index];
   if (!item) return null;
 
@@ -171,7 +180,7 @@ const RowComponent = ({
       aria-posinset={index + 1}
       style={style}
     >
-      {item.value}
+      {item.id}
     </Combobox.Item>
   );
 };
@@ -179,24 +188,29 @@ const RowComponent = ({
 const LabelledCombobox = ({
   items,
   label,
-}: //required,
-{
-  items: { id: string; value: string }[];
+  children,
+  value,
+  setValue,
+}: {
+  items: { id: string; [key: string]: any }[];
   label: string | ReactNode;
-  //required?: boolean;
+  children?: ReactNode;
+  value: { id: string; [key: string]: any } | null;
+  setValue: Dispatch<SetStateAction<{ id: string; [key: string]: any } | null>>;
 }) => {
   const { labelId, inputId } = useComboboxIds();
   const [open, setOpen] = useState(false);
   const [searchValue, setSearchValue] = useState("");
-  const [value, setValue] = useState<{ id: string; value: string } | null>(
-    null
-  );
   const listRef = useListRef(null);
+
+  useEffect(() => {
+    setSearchValue(value?.id ?? "");
+  }, [value]);
 
   const { contains } = Combobox.useFilter({ sensitivity: "base", value });
 
   const filteredItems = useMemo(() => {
-    return items.filter((item) => contains(item.value, searchValue));
+    return items.filter((item) => contains(item.id, searchValue));
   }, [items, contains, searchValue]);
 
   return (
@@ -213,10 +227,10 @@ const LabelledCombobox = ({
           onOpenChange={setOpen}
           inputValue={searchValue}
           onInputValueChange={setSearchValue}
-          value={value}
+          itemToStringLabel={(item) => item?.id ?? ""}
           onValueChange={(newValue) => {
             setValue(newValue);
-            setSearchValue(newValue?.value ?? "");
+            setSearchValue(newValue?.id ?? "");
           }}
           onItemHighlighted={(item, { reason, index }) => {
             if (!item || !listRef.current) return;
@@ -225,6 +239,7 @@ const LabelledCombobox = ({
                 listRef.current?.scrollToRow({ index: index });
               }, 0);
           }}
+          value={value}
         >
           <Combobox.Input
             aria-labelledby={labelId}
@@ -256,7 +271,7 @@ const LabelledCombobox = ({
                     role="listbox"
                     rowComponent={RowComponent}
                     rowCount={filteredItems.length}
-                    rowHeight={ITEM_HEIGHT}
+                    rowHeight={30}
                     rowProps={{ filteredItems }}
                   />
                 )}
@@ -265,6 +280,7 @@ const LabelledCombobox = ({
           </Combobox.Portal>
         </Combobox.Root>
       </div>
+      {children}
     </Field.Root>
   );
 };
@@ -317,48 +333,55 @@ const AboutSection = () => (
   </ToolbarSection>
 );
 
-const NetworkStatistics = () => (
-  <div className={styles.fieldGroup} role="group">
-    <h3 className={styles.groupLabel}>Network statistics</h3>
-    <dl className={styles.statsList}>
-      <StatItem label="Nodes" numberType="whole" value={12345678901234567890} />
-      <StatItem
-        label="Connections"
-        numberType="whole"
-        value={12345678901234567890}
-      />
-      <StatItem
-        label={
-          <>
-            Power law <var>γ</var>
-          </>
-        }
-        numberType="decimal"
-        value={2.3456789012345678901}
-      />
-      <StatItem
-        label="Clustering"
-        numberType="decimal"
-        value={0.1234567890123456789}
-      />
-    </dl>
-  </div>
-);
+const NetworkStatistics = ({ stats }: { stats: NetworkStats | undefined }) =>
+  stats && (
+    <div className={styles.fieldGroup} role="group">
+      <h3 className={styles.groupLabel}>Network statistics</h3>
+      <dl className={styles.statsList}>
+        <StatItem label="Nodes" numberType="integer" value={stats.N} />
+        <StatItem
+          label="Average degree"
+          numberType="decimal"
+          value={stats.kBar}
+        />
+        <StatItem
+          label={
+            <>
+              Power law <var>γ</var>
+            </>
+          }
+          numberType="decimal"
+          value={stats.gamma}
+        />
+        <StatItem
+          label="Clustering"
+          numberType="decimal"
+          value={stats.clustering}
+        />
+      </dl>
+    </div>
+  );
 
 const ViewSection = ({
+  nodes,
   panR,
   setPanR,
   panTheta,
   setPanTheta,
   zoom,
   setZoom,
+  selectedNode,
+  setSelectedNode,
 }: {
+  nodes: EmbeddedNode[];
   panR: number;
   setPanR: Dispatch<SetStateAction<number>>;
   panTheta: number;
   setPanTheta: Dispatch<SetStateAction<number>>;
   zoom: number;
   setZoom: Dispatch<SetStateAction<number>>;
+  selectedNode: EmbeddedNode | null;
+  setSelectedNode: Dispatch<SetStateAction<EmbeddedNode | null>>;
 }) => (
   <ToolbarSection title="View">
     <Fieldset.Root className={styles.fieldGroup}>
@@ -392,53 +415,359 @@ const ViewSection = ({
         />
       </div>
     </Field.Root>
-    <LabelledCombobox items={placeholderData} label="Highlight node" />
+    {nodes && (
+      <LabelledCombobox
+        items={nodes}
+        label="Selected node"
+        value={selectedNode}
+        setValue={
+          setSelectedNode as Dispatch<
+            SetStateAction<{ [key: string]: any; id: string } | null>
+          >
+        }
+      >
+        {selectedNode && (
+          <dl className={styles.statsList}>
+            <StatItem
+              label={<var>r</var>}
+              numberType="decimal"
+              value={selectedNode.r}
+            />
+            <StatItem
+              label={<var>θ</var>}
+              numberType="decimal"
+              value={selectedNode.theta}
+            />
+            <StatItem
+              label={<var>κ</var>}
+              numberType="decimal"
+              value={selectedNode.kappa}
+            />
+            <StatItem
+              label="Degree"
+              numberType="integer"
+              value={selectedNode.degree}
+            />
+          </dl>
+        )}
+      </LabelledCombobox>
+    )}
   </ToolbarSection>
 );
 
-const DataSection = () => (
-  <ToolbarSection title="Data">
-    <LabelledCombobox items={placeholderData} label="Dataset" />
-    <NetworkStatistics />
-  </ToolbarSection>
-);
+const DataSection = ({
+  stats,
+  datasets,
+  selectedDataset,
+  setSelectedDataset,
+}: {
+  stats: NetworkStats | undefined;
+  datasets: Dataset[];
+  selectedDataset: Dataset | null;
+  setSelectedDataset: Dispatch<SetStateAction<Dataset | null>>;
+}) => {
+  return (
+    <ToolbarSection title="Data">
+      <LabelledCombobox
+        items={datasets}
+        label="Dataset"
+        value={selectedDataset}
+        setValue={
+          setSelectedDataset as Dispatch<
+            SetStateAction<{ [key: string]: any; id: string } | null>
+          >
+        }
+      />
+      <NetworkStatistics stats={stats} />
+    </ToolbarSection>
+  );
+};
 
-const RoutingSection = () => (
+const RoutingPathDisplay = ({
+  routingResult,
+  selectedNode,
+  setSelectedNode,
+}: {
+  routingResult: RoutingResult | null;
+  selectedNode: EmbeddedNode | null;
+  setSelectedNode: Dispatch<SetStateAction<EmbeddedNode | null>>;
+}) => {
+  if (!routingResult || !routingResult.success) return null;
+
+  return (
+    <div className={styles.fieldGroup} role="group">
+      <h3 className={styles.groupLabel}>Path</h3>
+      <ol className={styles.pathList} role="list">
+        {routingResult.path.map((node, index) => {
+          const [isHovered, setIsHovered] = useState(false);
+          const isMeetingPoint = routingResult.meetingNode === node;
+          const isRouteEndpoint =
+            index === 0 || index === routingResult.path.length - 1;
+          const isSelected = selectedNode === node;
+
+          let colour = isHovered ? "#66BB6A" : "#A5D6A7";
+          if (isMeetingPoint) {
+            colour = isHovered ? "#FFA726" : "#FFCC80";
+          } else if (isRouteEndpoint) {
+            colour = isHovered ? "#AB47BC" : "#CE93D8";
+          } else if (isSelected) {
+            colour = isHovered ? "#EF5350" : "#EF9A9A";
+          }
+
+          return (
+            <li className={styles.pathListItem} key={`${node.id}-${index}`}>
+              <button
+                className={styles.pathListButton}
+                onClick={() =>
+                  setSelectedNode(selectedNode === node ? null : node)
+                }
+                onMouseOver={() => setIsHovered(true)}
+                onMouseOut={() => setIsHovered(false)}
+                style={{ backgroundColor: colour }}
+              >
+                {node.id}
+                {isMeetingPoint && " (meeting point)"}
+                {isRouteEndpoint && " (endpoint)"}
+                {isSelected && " (selected)"}
+              </button>
+            </li>
+          );
+        })}
+      </ol>
+      <p className={styles.inputHelp}>
+        Click on a node to select or deselect it.
+      </p>
+    </div>
+  );
+};
+
+const RoutingSection = ({
+  nodes,
+  startRouteNode,
+  setStartRouteNode,
+  endRouteNode,
+  setEndRouteNode,
+  routingResult,
+  selectedNode,
+  setSelectedNode,
+}: {
+  nodes: EmbeddedNode[];
+  startRouteNode: EmbeddedNode | null;
+  setStartRouteNode: Dispatch<SetStateAction<EmbeddedNode | null>>;
+  endRouteNode: EmbeddedNode | null;
+  setEndRouteNode: Dispatch<SetStateAction<EmbeddedNode | null>>;
+  routingResult: RoutingResult | null;
+  selectedNode: EmbeddedNode | null;
+  setSelectedNode: Dispatch<SetStateAction<EmbeddedNode | null>>;
+}) => (
   <ToolbarSection title="Routing">
-    <LabelledCombobox items={placeholderData} label="Start node" />
-    <LabelledCombobox items={placeholderData} label="End node" />
+    <LabelledCombobox
+      items={nodes}
+      label="Start node"
+      value={startRouteNode}
+      setValue={
+        setStartRouteNode as Dispatch<
+          SetStateAction<{ [key: string]: any; id: string } | null>
+        >
+      }
+    />
+    <LabelledCombobox
+      items={nodes}
+      label="End node"
+      value={endRouteNode}
+      setValue={
+        setEndRouteNode as Dispatch<
+          SetStateAction<{ [key: string]: any; id: string } | null>
+        >
+      }
+    />
+    {routingResult && routingResult.success && (
+      <>
+        <dl className={styles.statsList}>
+          <StatItem
+            label="Path length"
+            numberType="integer"
+            value={routingResult.pathLength}
+          />
+          <StatItem
+            label="Stretch"
+            numberType="decimal"
+            value={routingResult.stretch}
+          />
+          <StatItem
+            label="Distance"
+            numberType="decimal"
+            value={routingResult.distance}
+          />
+        </dl>
+        <RoutingPathDisplay
+          routingResult={routingResult}
+          selectedNode={selectedNode}
+          setSelectedNode={setSelectedNode}
+        />
+      </>
+    )}
+    {routingResult && !routingResult.success && (
+      <p className={styles.inputHelp}>No path found</p>
+    )}
   </ToolbarSection>
 );
 
 const App = () => {
+  const [datasets, setDatasets] = useState<Dataset[]>([]);
+  const [selectedDataset, setSelectedDataset] = useState<Dataset | null>(null);
+  const [csvContent, setCsvContent] = useState<string>("");
+
+  // Load datasets list
+  useEffect(() => {
+    const loadDatasets = async () => {
+      try {
+        const response = await fetch("/datasets.csv");
+        const csvText = await response.text();
+        const lines = csvText.split("\n").slice(1); // Skip header
+        const loadedDatasets: Dataset[] = [];
+
+        for (const line of lines) {
+          if (line.trim()) {
+            const [label, filename] = line.split(",");
+            loadedDatasets.push({ id: label, filename: filename.trim() });
+          }
+        }
+
+        setDatasets(loadedDatasets);
+        if (loadedDatasets.length > 0) {
+          setSelectedDataset(loadedDatasets[0]);
+        }
+      } catch (error) {
+        console.error("Failed to load datasets:", error);
+      }
+    };
+
+    loadDatasets();
+  }, []);
+
+  // Load selected dataset content
+  useEffect(() => {
+    const loadDatasetContent = async () => {
+      if (!selectedDataset) return;
+
+      try {
+        const response = await fetch(`/${selectedDataset.filename}`);
+        const content = await response.text();
+        setCsvContent(content);
+      } catch (error) {
+        console.error("Failed to load dataset content:", error);
+      }
+    };
+
+    loadDatasetContent();
+  }, [selectedDataset]);
+
+  const [nodes, setNodes] = useState<EmbeddedNode[]>([]);
+  const [edges, setEdges] = useState<Edge[]>([]);
+  const [stats, setStats] = useState<NetworkStats>();
+
+  useEffect(() => {
+    if (!csvContent) return;
+
+    setEdges(parseCSV(csvContent));
+    embedNetwork(csvContent).then((output) => {
+      setNodes(output.nodes);
+      setStats(output.stats);
+    });
+  }, [csvContent]);
+
   const [panR, setPanR] = useState(0);
   const [panTheta, setPanTheta] = useState(0);
   const [zoom, setZoom] = useState(1);
+
+  const [selectedNode, setSelectedNode] = useState<EmbeddedNode | null>(null);
+
+  const [startRouteNode, setStartRouteNode] = useState<EmbeddedNode | null>(
+    null
+  );
+  const [endRouteNode, setEndRouteNode] = useState<EmbeddedNode | null>(null);
+  const [routingResult, setRoutingResult] = useState<RoutingResult | null>(
+    null
+  );
+
+  const adjacency = useMemo(() => {
+    const adj = new Map<string, Set<string>>();
+    for (const edge of edges) {
+      if (!adj.has(edge.source)) adj.set(edge.source, new Set());
+      if (!adj.has(edge.target)) adj.set(edge.target, new Set());
+      adj.get(edge.source)!.add(edge.target);
+      adj.get(edge.target)!.add(edge.source);
+    }
+    return adj;
+  }, [edges]);
+
+  const nodeMap = useMemo(() => {
+    const map = new Map<string, EmbeddedNode>();
+    nodes.forEach((node) => map.set(node.id, node));
+    return map;
+  }, [nodes]);
+
+  useEffect(() => {
+    if (startRouteNode && endRouteNode && adjacency && nodeMap) {
+      const result = bidirectionalGreedyRouting(
+        startRouteNode,
+        endRouteNode,
+        adjacency,
+        nodeMap
+      );
+      setRoutingResult(result);
+    } else {
+      setRoutingResult(null);
+    }
+  }, [startRouteNode, endRouteNode, adjacency, nodeMap]);
 
   return (
     <StrictMode>
       <ScreenReaderNotice />
       <aside className={styles.toolbar}>
         <ViewSection
+          nodes={nodes}
           panR={panR}
           setPanR={setPanR}
           panTheta={panTheta}
           setPanTheta={setPanTheta}
           zoom={zoom}
           setZoom={setZoom}
+          selectedNode={selectedNode}
+          setSelectedNode={setSelectedNode}
         />
-        <DataSection />
-        <RoutingSection />
+        <DataSection
+          stats={stats}
+          datasets={datasets}
+          selectedDataset={selectedDataset}
+          setSelectedDataset={setSelectedDataset}
+        />
+        <RoutingSection
+          nodes={nodes}
+          startRouteNode={startRouteNode}
+          setStartRouteNode={setStartRouteNode}
+          endRouteNode={endRouteNode}
+          setEndRouteNode={setEndRouteNode}
+          routingResult={routingResult}
+          selectedNode={selectedNode}
+          setSelectedNode={setSelectedNode}
+        />
         <AboutSection />
       </aside>
       <main className={styles.visualization}>
         <Disc
+          nodes={nodes}
+          edges={edges}
           panR={panR}
           setPanR={setPanR}
           panTheta={panTheta}
           setPanTheta={setPanTheta}
           zoom={zoom}
           setZoom={setZoom}
+          selectedNode={selectedNode}
+          setSelectedNode={setSelectedNode}
+          routingResult={routingResult}
         />
       </main>
     </StrictMode>
