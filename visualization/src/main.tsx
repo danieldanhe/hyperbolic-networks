@@ -15,17 +15,13 @@ import styles from "./styles.module.scss";
 import { Combobox } from "@base-ui-components/react/combobox";
 import { Field } from "@base-ui-components/react/field";
 import { Fieldset } from "@base-ui-components/react/fieldset";
+import { Tabs } from "@base-ui-components/react/tabs";
 import { List, type RowComponentProps, useListRef } from "react-window";
 import { round } from "mathjs";
 
 import Disc from "./Disc";
-import {
-  type Edge,
-  type EmbeddedNode,
-  type NetworkStats,
-  embedNetwork,
-  parseCSV,
-} from "./embedding";
+import { type Edge, type EmbeddedNode, type NetworkStats } from "./embedding";
+import EmbeddingWorker from "./embedding.worker.ts?worker";
 import { bidirectionalGreedyRouting, type RoutingResult } from "./routing";
 
 interface Dataset {
@@ -242,12 +238,19 @@ const LabelledCombobox = ({
             setValue(newValue);
             setSearchValue(newValue?.id ?? "");
           }}
-          onItemHighlighted={(item, { reason, index }) => {
+          onItemHighlighted={(item, { reason }) => {
             if (!item || !listRef.current) return;
-            if (reason === "none" || reason === "keyboard")
+
+            if (reason === "none" || reason === "keyboard") {
               setTimeout(() => {
-                listRef.current?.scrollToRow({ index: index });
+                const filteredIndex = filteredItems.findIndex(
+                  (filteredItem) => filteredItem.id === item.id
+                );
+                if (filteredIndex >= 0) {
+                  listRef.current?.scrollToRow({ index: filteredIndex });
+                }
               }, 0);
+            }
           }}
           value={value}
         >
@@ -623,10 +626,54 @@ const RoutingSection = ({
   </ToolbarSection>
 );
 
+const nodesToEdges = (adjacencyMap: Map<string, Set<string>>): Edge[] => {
+  const edges: Edge[] = [];
+  const addedEdges = new Set<string>();
+
+  for (const [sourceId, targets] of adjacencyMap.entries()) {
+    for (const targetId of targets) {
+      const key =
+        sourceId < targetId
+          ? `${sourceId}-${targetId}`
+          : `${targetId}-${sourceId}`;
+
+      if (!addedEdges.has(key)) {
+        edges.push({ source: sourceId, target: targetId });
+        addedEdges.add(key);
+      }
+    }
+  }
+  return edges;
+};
+
+function useMediaQuery(query: string): boolean {
+  const [matches, setMatches] = useState<boolean>(() => {
+    if (typeof window !== "undefined") {
+      return window.matchMedia(query).matches;
+    }
+    return false;
+  });
+
+  useEffect(() => {
+    const mediaQueryList: MediaQueryList = window.matchMedia(query);
+
+    const listener = (event: MediaQueryListEvent) => {
+      setMatches(event.matches);
+    };
+
+    mediaQueryList.addEventListener("change", listener);
+
+    return () => {
+      mediaQueryList.removeEventListener("change", listener);
+    };
+  }, [query]);
+
+  return matches;
+}
+
 const App = () => {
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [selectedDataset, setSelectedDataset] = useState<Dataset | null>(null);
-  const [csvContent, setCsvContent] = useState<string>("");
 
   useEffect(() => {
     const loadDatasets = async () => {
@@ -645,42 +692,69 @@ const App = () => {
 
         setDatasets(loadedDatasets);
       } catch (error) {
-        console.error("Failed to load datasets:", error);
+        console.error(error);
       }
     };
 
     loadDatasets();
   }, []);
 
-  useEffect(() => {
-    const loadDatasetContent = async () => {
-      if (!selectedDataset) return;
-
-      try {
-        const response = await fetch(`/${selectedDataset.filename}`);
-        const content = await response.text();
-        setCsvContent(content);
-      } catch (error) {
-        console.error("Failed to load dataset content:", error);
-      }
-    };
-
-    loadDatasetContent();
-  }, [selectedDataset]);
-
   const [nodes, setNodes] = useState<EmbeddedNode[]>([]);
   const [edges, setEdges] = useState<Edge[]>([]);
   const [stats, setStats] = useState<NetworkStats>();
 
   useEffect(() => {
-    if (!csvContent) return;
+    if (!selectedDataset) return;
 
-    setEdges(parseCSV(csvContent));
-    embedNetwork(csvContent).then((output) => {
-      setNodes(output.nodes);
-      setStats(output.stats);
-    });
-  }, [csvContent]);
+    const loadAndProcessDataset = async () => {
+      setNodes([]);
+      setEdges([]);
+      setStats(undefined);
+
+      try {
+        const response = await fetch(`/${selectedDataset.filename}`);
+        const csvContent = await response.text();
+
+        if (!csvContent) {
+          console.error("No CSV content loaded");
+          return;
+        }
+
+        const worker = new EmbeddingWorker();
+
+        worker.onmessage = (e) => {
+          if (e.data.type === "SUCCESS") {
+            const {
+              nodes: embeddedNodes,
+              stats,
+              stringAdjacency,
+            } = e.data.result;
+
+            const generatedEdges = nodesToEdges(stringAdjacency);
+
+            setNodes(embeddedNodes);
+            setEdges(generatedEdges);
+            setStats(stats);
+          } else if (e.data.type === "ERROR") {
+            console.error(e.data.message);
+          }
+
+          worker.terminate();
+        };
+
+        worker.onerror = (error) => {
+          console.error(error);
+          worker.terminate();
+        };
+
+        worker.postMessage({ csvContent });
+      } catch (error) {
+        console.error(error);
+      }
+    };
+
+    loadAndProcessDataset();
+  }, [selectedDataset]);
 
   const [panR, setPanR] = useState(0);
   const [panTheta, setPanTheta] = useState(0);
@@ -696,6 +770,12 @@ const App = () => {
     null
   );
 
+  const nodeMap = useMemo(() => {
+    const map = new Map<string, EmbeddedNode>();
+    nodes.forEach((node) => map.set(node.id, node));
+    return map;
+  }, [nodes]);
+
   const adjacency = useMemo(() => {
     const adj = new Map<string, Set<string>>();
     for (const edge of edges) {
@@ -706,12 +786,6 @@ const App = () => {
     }
     return adj;
   }, [edges]);
-
-  const nodeMap = useMemo(() => {
-    const map = new Map<string, EmbeddedNode>();
-    nodes.forEach((node) => map.set(node.id, node));
-    return map;
-  }, [nodes]);
 
   useEffect(() => {
     if (startRouteNode && endRouteNode && adjacency && nodeMap) {
@@ -727,55 +801,89 @@ const App = () => {
     }
   }, [startRouteNode, endRouteNode, adjacency, nodeMap]);
 
+  const [currentTab, setCurrentTab] = useState<"toolbar" | "visualization">(
+    "visualization"
+  );
+  const wide = useMediaQuery("(min-width: 840px)");
+
   return (
-    <StrictMode>
+    <>
       <ScreenReaderNotice />
-      <aside className={styles.toolbar}>
-        <ViewSection
-          nodes={nodes}
-          panR={panR}
-          setPanR={setPanR}
-          panTheta={panTheta}
-          setPanTheta={setPanTheta}
-          zoom={zoom}
-          setZoom={setZoom}
-          selectedNode={selectedNode}
-          setSelectedNode={setSelectedNode}
-        />
-        <DataSection
-          stats={stats}
-          datasets={datasets}
-          selectedDataset={selectedDataset}
-          setSelectedDataset={setSelectedDataset}
-        />
-        <RoutingSection
-          nodes={nodes}
-          startRouteNode={startRouteNode}
-          setStartRouteNode={setStartRouteNode}
-          endRouteNode={endRouteNode}
-          setEndRouteNode={setEndRouteNode}
-          routingResult={routingResult}
-          selectedNode={selectedNode}
-          setSelectedNode={setSelectedNode}
-        />
-        <AboutSection />
-      </aside>
-      <main className={styles.visualization}>
-        <Disc
-          nodes={nodes}
-          edges={edges}
-          panR={panR}
-          setPanR={setPanR}
-          panTheta={panTheta}
-          setPanTheta={setPanTheta}
-          zoom={zoom}
-          setZoom={setZoom}
-          selectedNode={selectedNode}
-          setSelectedNode={setSelectedNode}
-          routingResult={routingResult}
-        />
-      </main>
-    </StrictMode>
+      <Tabs.Root
+        className={styles.tabContainer}
+        onValueChange={setCurrentTab}
+        style={{ display: wide ? "none" : "block" }}
+        value={currentTab}
+      >
+        <Tabs.List className={styles.tabsList}>
+          <Tabs.Tab className={styles.tab} value="toolbar">
+            Toolbar
+          </Tabs.Tab>
+          <Tabs.Tab className={styles.tab} value="visualization">
+            Visualization
+          </Tabs.Tab>
+          <Tabs.Indicator className={styles.tabIndicator} />
+        </Tabs.List>
+      </Tabs.Root>
+      <div className={styles.container}>
+        <aside
+          className={styles.toolbar}
+          style={{
+            display: currentTab == "toolbar" || wide ? "block" : "none",
+            flexBasis: wide ? "" : "100%",
+          }}
+        >
+          <ViewSection
+            nodes={nodes}
+            panR={panR}
+            setPanR={setPanR}
+            panTheta={panTheta}
+            setPanTheta={setPanTheta}
+            zoom={zoom}
+            setZoom={setZoom}
+            selectedNode={selectedNode}
+            setSelectedNode={setSelectedNode}
+          />
+          <DataSection
+            stats={stats}
+            datasets={datasets}
+            selectedDataset={selectedDataset}
+            setSelectedDataset={setSelectedDataset}
+          />
+          <RoutingSection
+            nodes={nodes}
+            startRouteNode={startRouteNode}
+            setStartRouteNode={setStartRouteNode}
+            endRouteNode={endRouteNode}
+            setEndRouteNode={setEndRouteNode}
+            routingResult={routingResult}
+            selectedNode={selectedNode}
+            setSelectedNode={setSelectedNode}
+          />
+          <AboutSection />
+        </aside>
+        <main
+          className={styles.visualization}
+          style={{
+            display: currentTab == "visualization" || wide ? "block" : "none",
+          }}
+        >
+          <Disc
+            nodes={nodes}
+            edges={edges}
+            panR={panR}
+            setPanR={setPanR}
+            panTheta={panTheta}
+            setPanTheta={setPanTheta}
+            zoom={zoom}
+            setZoom={setZoom}
+            selectedNode={selectedNode}
+            setSelectedNode={setSelectedNode}
+            routingResult={routingResult}
+          />
+        </main>
+      </div>
+    </>
   );
 };
 

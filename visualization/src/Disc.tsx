@@ -6,6 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useLayoutEffect,
 } from "react";
 import * as THREE from "three";
 import { Canvas, useThree } from "@react-three/fiber";
@@ -67,13 +68,16 @@ function generateGeodesicPoints(
   x1: number,
   y1: number,
   x2: number,
-  y2: number,
-  segments: number = 20
+  y2: number
 ): THREE.Vector3[] {
   const points: THREE.Vector3[] = [];
 
   const dist = Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
-  if (dist < 0.1) {
+
+  const avgR = Math.sqrt((x1 ** 2 + y1 ** 2 + x2 ** 2 + y2 ** 2) / 2);
+  const adaptiveSegments = avgR > 0.8 ? 8 : dist < 0.1 ? 4 : 12;
+
+  if (dist < 0.05) {
     points.push(new THREE.Vector3(x1, y1, 0));
     points.push(new THREE.Vector3(x2, y2, 0));
     return points;
@@ -87,8 +91,8 @@ function generateGeodesicPoints(
   const controlX = midX * (1 - pushFactor / (midR + 0.01));
   const controlY = midY * (1 - pushFactor / (midR + 0.01));
 
-  for (let i = 0; i <= segments; i++) {
-    const t = i / segments;
+  for (let i = 0; i <= adaptiveSegments; i++) {
+    const t = i / adaptiveSegments;
     const s = 1 - t;
     const x = s * s * x1 + 2 * s * t * controlX + t * t * x2;
     const y = s * s * y1 + 2 * s * t * controlY + t * t * y2;
@@ -101,91 +105,218 @@ function generateGeodesicPoints(
 let minimumDegree = 1;
 let maximumDegree = 10;
 
-const Node = ({
-  node,
-  position,
-  isSelected,
-  isHovered,
-  isOnPath,
-  isMeetingPoint,
-  isRouteEndpoint,
+const InstancedNodes = ({
+  nodes,
+  nodePositions,
+  selectedNode,
+  hoveredNode,
+  pathNodeSet,
+  routingResult,
   onSelect,
   onHover,
 }: {
-  node: EmbeddedNode;
-  position: { x: number; y: number };
-  isSelected: boolean;
-  isHovered: boolean;
-  isOnPath: boolean;
-  isMeetingPoint: boolean;
-  isRouteEndpoint: boolean | undefined;
-  onSelect: () => void;
-  onHover: (hovering: boolean) => void;
+  nodes: EmbeddedNode[];
+  nodePositions: Map<string, { x: number; y: number }>;
+  selectedNode: EmbeddedNode | null;
+  hoveredNode: EmbeddedNode | null;
+  pathNodeSet: Set<string>;
+  routingResult: RoutingResult | null;
+  onSelect: (node: EmbeddedNode | null) => void;
+  onHover: (node: EmbeddedNode | null) => void;
 }) => {
-  const { gl } = useThree();
+  const meshRef = useRef<THREE.InstancedMesh>(null);
+  const { gl, raycaster, camera, size } = useThree();
 
-  const hyperbolicSize =
-    0.8 +
-    (3.2 * Math.log(node.degree / minimumDegree)) /
-      Math.log(maximumDegree / minimumDegree);
-  const rEuclidean = Math.sqrt(
-    position.x * position.x + position.y * position.y
+  const nodeData = useMemo(() => {
+    return nodes
+      .map((node) => {
+        const position = nodePositions.get(node.id);
+        if (!position) return null;
+
+        const hyperbolicSize =
+          0.8 +
+          (3.2 * Math.log(node.degree / minimumDegree)) /
+            Math.log(maximumDegree / minimumDegree);
+        const rEuclidean = Math.sqrt(
+          position.x * position.x + position.y * position.y
+        );
+        const scaleFactor = 1 - rEuclidean * rEuclidean;
+        const size = Math.max(0.001, (hyperbolicSize * scaleFactor) / 20);
+
+        const isMeetingPoint = routingResult?.meetingNode === node;
+        const isOnPath = pathNodeSet.has(node.id);
+        const isRouteEndpoint =
+          routingResult?.success &&
+          (node === routingResult.path[0] ||
+            node === routingResult.path[routingResult.path.length - 1]);
+
+        let colour = hoveredNode === node ? "#42A5F5" : "#90CAF9";
+        if (isMeetingPoint) {
+          colour = hoveredNode === node ? "#FFA726" : "#FFCC80";
+        } else if (isRouteEndpoint) {
+          colour = hoveredNode === node ? "#AB47BC" : "#CE93D8";
+        } else if (isOnPath) {
+          colour = hoveredNode === node ? "#66BB6A" : "#A5D6A7";
+        } else if (selectedNode === node) {
+          colour = hoveredNode === node ? "#EF5350" : "#EF9A9A";
+        }
+
+        return { node, position, size, color: new THREE.Color(colour) };
+      })
+      .filter(Boolean);
+  }, [
+    nodes,
+    nodePositions,
+    selectedNode,
+    hoveredNode,
+    pathNodeSet,
+    routingResult,
+  ]);
+
+  useLayoutEffect(() => {
+    if (!meshRef.current) return;
+
+    const tempObject = new THREE.Object3D();
+    const tempColor = new THREE.Color();
+
+    nodeData.forEach((data, i) => {
+      if (!data) return;
+
+      tempObject.position.set(data.position.x, data.position.y, 0.1);
+      tempObject.scale.setScalar(data.size);
+      tempObject.updateMatrix();
+
+      meshRef.current!.setMatrixAt(i, tempObject.matrix);
+      meshRef.current!.setColorAt(i, data.color);
+    });
+
+    meshRef.current.instanceMatrix.needsUpdate = true;
+    if (meshRef.current.instanceColor) {
+      meshRef.current.instanceColor.needsUpdate = true;
+    }
+  }, [nodeData]);
+
+  const handleClick = useCallback(
+    (event: any) => {
+      if (!meshRef.current) return;
+
+      const mouse = new THREE.Vector2();
+      const rect = gl.domElement.getBoundingClientRect();
+      mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+      raycaster.setFromCamera(mouse, camera);
+
+      const intersects = raycaster.intersectObject(meshRef.current);
+
+      if (intersects.length > 0 && intersects[0].instanceId !== undefined) {
+        const instanceId = intersects[0].instanceId;
+        const data = nodeData[instanceId];
+        if (data) {
+          event.stopPropagation();
+          onSelect(selectedNode === data.node ? null : data.node);
+        }
+      }
+    },
+    [nodeData, selectedNode, onSelect, gl, raycaster, camera]
   );
 
-  const scaleFactor = 1 - rEuclidean * rEuclidean;
-  const size = Math.max(0.001, (hyperbolicSize * scaleFactor) / 20);
+  const handlePointerMove = useCallback(
+    (event: any) => {
+      if (!meshRef.current) return;
 
-  const textSize = size * 0.8;
+      const mouse = new THREE.Vector2();
+      const rect = gl.domElement.getBoundingClientRect();
+      mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
 
-  const hideText = rEuclidean > 0.95 || size < 0.01;
+      raycaster.setFromCamera(mouse, camera);
+      const intersects = raycaster.intersectObject(meshRef.current);
 
-  let colour = isHovered ? "#42A5F5" : "#90CAF9";
-  if (isMeetingPoint) {
-    colour = isHovered ? "#FFA726" : "#FFCC80";
-  } else if (isRouteEndpoint) {
-    colour = isHovered ? "#AB47BC" : "#CE93D8";
-  } else if (isOnPath) {
-    colour = isHovered ? "#66BB6A" : "#A5D6A7";
-  } else if (isSelected) {
-    colour = isHovered ? "#EF5350" : "#EF9A9A";
-  }
+      if (intersects.length > 0 && intersects[0].instanceId !== undefined) {
+        const instanceId = intersects[0].instanceId;
+        const data = nodeData[instanceId];
+        if (data) {
+          gl.domElement.style.cursor = "pointer";
+          onHover(data.node);
+          return;
+        }
+      }
+
+      gl.domElement.style.cursor = "default";
+      onHover(null);
+    },
+    [nodeData, onHover, gl, raycaster, camera]
+  );
+
+  const handlePointerOut = useCallback(() => {
+    gl.domElement.style.cursor = "default";
+    onHover(null);
+  }, [gl, onHover]);
+
+  useEffect(() => {
+    const canvas = gl.domElement;
+    canvas.addEventListener("click", handleClick);
+    canvas.addEventListener("pointermove", handlePointerMove);
+    canvas.addEventListener("pointerout", handlePointerOut);
+
+    return () => {
+      canvas.removeEventListener("click", handleClick);
+      canvas.removeEventListener("pointermove", handlePointerMove);
+      canvas.removeEventListener("pointerout", handlePointerOut);
+    };
+  }, [gl, handleClick, handlePointerMove, handlePointerOut]);
 
   return (
-    <group position={[position.x, position.y, 0.1]}>
-      <mesh
-        onClick={(e) => {
-          e.stopPropagation();
-          onSelect();
-        }}
-        onPointerOver={(e) => {
-          e.stopPropagation();
-          gl.domElement.style.cursor = "pointer";
-          onHover(true);
-        }}
-        onPointerOut={(e) => {
-          e.stopPropagation();
-          gl.domElement.style.cursor = "default";
-          onHover(false);
-        }}
-      >
-        <circleGeometry args={[size, 32]} />
-        <meshBasicMaterial color={colour} side={THREE.DoubleSide} />
-      </mesh>
+    <instancedMesh ref={meshRef} args={[undefined, undefined, nodes.length]}>
+      <circleGeometry args={[1, 32]} />
+      <meshBasicMaterial side={THREE.DoubleSide} />
+    </instancedMesh>
+  );
+};
 
-      {!hideText && (
-        <Text
-          position={[0, 0, 0.2]}
-          fontSize={textSize}
-          color="#000000"
-          anchorX="center"
-          anchorY="middle"
-          whiteSpace="nowrap"
-          maxWidth={size * 2}
-        >
-          {node.id}
-        </Text>
-      )}
-    </group>
+const NodeLabels = ({
+  nodes,
+  nodePositions,
+}: {
+  nodes: EmbeddedNode[];
+  nodePositions: Map<string, { x: number; y: number }>;
+}) => {
+  return (
+    <>
+      {nodes.map((node) => {
+        const position = nodePositions.get(node.id);
+        if (!position) return null;
+
+        const rEuclidean = Math.sqrt(
+          position.x * position.x + position.y * position.y
+        );
+        const hyperbolicSize =
+          0.8 +
+          (3.2 * Math.log(node.degree / minimumDegree)) /
+            Math.log(maximumDegree / minimumDegree);
+        const scaleFactor = 1 - rEuclidean * rEuclidean;
+        const size = Math.max(0.001, (hyperbolicSize * scaleFactor) / 20);
+
+        const hideText = rEuclidean > 0.95 || size < 0.01;
+        if (hideText) return null;
+
+        return (
+          <Text
+            key={node.id}
+            position={[position.x, position.y, 0.2]}
+            fontSize={size * 1.5}
+            color="#000000"
+            anchorX="center"
+            anchorY="middle"
+            whiteSpace="nowrap"
+            maxWidth={size * 2}
+          >
+            {node.id}
+          </Text>
+        );
+      })}
+    </>
   );
 };
 
@@ -263,18 +394,67 @@ const DiscBoundary = () => {
   );
 };
 
+const getTouchDistance = (touches: TouchList): number => {
+  if (touches.length < 2) return 0;
+  const dx = touches[0].clientX - touches[1].clientX;
+  const dy = touches[0].clientY - touches[1].clientY;
+  return Math.sqrt(dx * dx + dy * dy);
+};
+
 const CameraController = ({
-  onPan,
-  onZoom,
+  onTransformChange,
 }: {
-  onPan: (dx: number, dy: number) => void;
-  onZoom: (delta: number) => void;
+  onTransformChange: (panR: number, panTheta: number, zoom: number) => void;
 }) => {
   const { gl } = useThree();
 
+  const transformRef = useRef({ panR: 0, panTheta: 0, zoom: 1 });
   const isPanning = useRef(false);
   const lastMouseX = useRef(0);
   const lastMouseY = useRef(0);
+  const initialTouchDistance = useRef<number | null>(null);
+  const isZooming = useRef(false);
+
+  const updateTransform = useCallback(() => {
+    onTransformChange(
+      transformRef.current.panR,
+      transformRef.current.panTheta,
+      transformRef.current.zoom
+    );
+  }, [onTransformChange]);
+
+  const handlePan = useCallback(
+    (dx: number, dy: number) => {
+      const currentREuclidean = Math.tanh(transformRef.current.panR / 2);
+      const currentX =
+        currentREuclidean * Math.cos(transformRef.current.panTheta);
+      const currentY =
+        currentREuclidean * Math.sin(transformRef.current.panTheta);
+
+      const newCenterEuclidean = moebiusTranslate(currentX, currentY, dx, dy);
+      const { r: newR, theta: newTheta } = euclideanToHyperbolic(
+        newCenterEuclidean.x,
+        newCenterEuclidean.y
+      );
+
+      transformRef.current.panR = newR;
+      transformRef.current.panTheta = newTheta;
+      updateTransform();
+    },
+    [updateTransform]
+  );
+
+  const handleZoom = useCallback(
+    (delta: number) => {
+      const factor = Math.exp(delta);
+      transformRef.current.zoom = Math.max(
+        0.02,
+        Math.min(50, transformRef.current.zoom * factor)
+      );
+      updateTransform();
+    },
+    [updateTransform]
+  );
 
   useEffect(() => {
     const onMouseDown = (event: MouseEvent) => {
@@ -293,8 +473,7 @@ const CameraController = ({
         const deltaY = event.clientY - lastMouseY.current;
 
         const sensitivity = 0.001;
-
-        onPan(deltaX * sensitivity, -deltaY * sensitivity);
+        handlePan(deltaX * sensitivity, -deltaY * sensitivity);
 
         lastMouseX.current = event.clientX;
         lastMouseY.current = event.clientY;
@@ -302,28 +481,97 @@ const CameraController = ({
     };
 
     const onMouseUp = () => {
-      isPanning.current = false;
-      gl.domElement.style.cursor = "default";
+      if (isPanning.current) {
+        isPanning.current = false;
+        if (gl.domElement.style.cursor === "grabbing") {
+          gl.domElement.style.cursor = "default";
+        }
+      }
     };
 
     const onWheel = (event: WheelEvent) => {
       event.preventDefault();
       const zoomSpeed = 0.001;
-      onZoom(-event.deltaY * zoomSpeed);
+      handleZoom(-event.deltaY * zoomSpeed);
+    };
+
+    const onTouchStart = (event: TouchEvent) => {
+      if (event.touches.length === 2) {
+        event.preventDefault();
+        isZooming.current = true;
+        initialTouchDistance.current = getTouchDistance(event.touches);
+        isPanning.current = false;
+      } else if (event.touches.length === 1 && !isZooming.current) {
+        event.preventDefault();
+        isPanning.current = true;
+        lastMouseX.current = event.touches[0].clientX;
+        lastMouseY.current = event.touches[0].clientY;
+        gl.domElement.style.cursor = "grabbing";
+      }
+    };
+
+    const onTouchMove = (event: TouchEvent) => {
+      if (
+        isZooming.current &&
+        initialTouchDistance.current !== null &&
+        event.touches.length === 2
+      ) {
+        event.preventDefault();
+        const currentDistance = getTouchDistance(event.touches);
+        const distanceDelta = currentDistance - initialTouchDistance.current;
+
+        const zoomSensitivity = 0.005;
+        handleZoom(distanceDelta * zoomSensitivity);
+
+        initialTouchDistance.current = currentDistance;
+      } else if (isPanning.current && event.touches.length === 1) {
+        event.preventDefault();
+
+        const deltaX = event.touches[0].clientX - lastMouseX.current;
+        const deltaY = event.touches[0].clientY - lastMouseY.current;
+
+        const sensitivity = 0.001;
+        handlePan(deltaX * sensitivity, -deltaY * sensitivity);
+
+        lastMouseX.current = event.touches[0].clientX;
+        lastMouseY.current = event.touches[0].clientY;
+      }
+    };
+
+    const onTouchEnd = () => {
+      isZooming.current = false;
+      initialTouchDistance.current = null;
+
+      if (isPanning.current) {
+        isPanning.current = false;
+        gl.domElement.style.cursor = "default";
+      }
     };
 
     gl.domElement.addEventListener("mousedown", onMouseDown);
+    gl.domElement.addEventListener("wheel", onWheel, { passive: false });
     window.addEventListener("mousemove", onMouseMove);
     window.addEventListener("mouseup", onMouseUp);
-    gl.domElement.addEventListener("wheel", onWheel, { passive: false });
+
+    gl.domElement.addEventListener("touchstart", onTouchStart, {
+      passive: false,
+    });
+    gl.domElement.addEventListener("touchmove", onTouchMove, {
+      passive: false,
+    });
+    gl.domElement.addEventListener("touchend", onTouchEnd);
 
     return () => {
       gl.domElement.removeEventListener("mousedown", onMouseDown);
+      gl.domElement.removeEventListener("wheel", onWheel);
       window.removeEventListener("mousemove", onMouseMove);
       window.removeEventListener("mouseup", onMouseUp);
-      gl.domElement.removeEventListener("wheel", onWheel);
+
+      gl.domElement.removeEventListener("touchstart", onTouchStart);
+      gl.domElement.removeEventListener("touchmove", onTouchMove);
+      gl.domElement.removeEventListener("touchend", onTouchEnd);
     };
-  }, [gl, onPan, onZoom]);
+  }, [gl, handlePan, handleZoom]);
 
   return null;
 };
@@ -339,8 +587,7 @@ const Scene = ({
   panR,
   panTheta,
   zoom,
-  onPan,
-  onZoom,
+  onTransformChange,
 }: {
   nodes: EmbeddedNode[];
   edges: Edge[];
@@ -352,19 +599,35 @@ const Scene = ({
   panR: number;
   panTheta: number;
   zoom: number;
-  onPan: (deltaR: number, deltaTheta: number) => void;
-  onZoom: (delta: number) => void;
+  onTransformChange: (panR: number, panTheta: number, zoom: number) => void;
 }) => {
+  const transformRef = useRef({ panR, panTheta, zoom });
+
+  useEffect(() => {
+    transformRef.current = { panR, panTheta, zoom };
+  }, [panR, panTheta, zoom]);
+
   const nodePositions = useMemo(() => {
     const positions = new Map<string, { x: number; y: number }>();
     nodes.forEach((node) => {
       positions.set(
         node.id,
-        projectToDisc(node.r, node.theta, panR, panTheta, zoom)
+        projectToDisc(
+          node.r,
+          node.theta,
+          transformRef.current.panR,
+          transformRef.current.panTheta,
+          transformRef.current.zoom
+        )
       );
     });
     return positions;
-  }, [nodes, panR, panTheta, zoom]);
+  }, [
+    nodes,
+    transformRef.current.panR,
+    transformRef.current.panTheta,
+    transformRef.current.zoom,
+  ]);
 
   const pathEdgeSet = useMemo(() => {
     if (!routingResult || !routingResult.success) return new Set<string>();
@@ -398,7 +661,7 @@ const Scene = ({
     const edgeSet = new Set<string>();
     for (let i = 0; i < routingResult.backwardPath.length - 1; i++) {
       const a = routingResult.backwardPath[i].id;
-      const b = routingResult.backwardPath[i + 1].id;
+      b = routingResult.backwardPath[i + 1].id;
       edgeSet.add(`${a}-${b}`);
       edgeSet.add(`${b}-${a}`);
     }
@@ -416,12 +679,14 @@ const Scene = ({
         const sourcePos = nodePositions.get(edge.source);
         const targetPos = nodePositions.get(edge.target);
 
-        if (sourcePos && targetPos) {
-          const edgeKey = `${edge.source}-${edge.target}`;
-          const isOnPath = pathEdgeSet.has(edgeKey);
-          const isForward = forwardEdgeSet.has(edgeKey);
-          const isBackward = backwardEdgeSet.has(edgeKey);
+        if (!sourcePos || !targetPos) return null;
 
+        const edgeKey = `${edge.source}-${edge.target}`;
+        const isOnPath = pathEdgeSet.has(edgeKey);
+        const isForward = forwardEdgeSet.has(edgeKey);
+        const isBackward = backwardEdgeSet.has(edgeKey);
+
+        if (isOnPath) {
           return {
             key: edgeKey,
             points: generateGeodesicPoints(
@@ -435,7 +700,41 @@ const Scene = ({
             isBackward,
           };
         }
-        return null;
+
+        const sourceR = Math.sqrt(sourcePos.x ** 2 + sourcePos.y ** 2);
+        const targetR = Math.sqrt(targetPos.x ** 2 + targetPos.y ** 2);
+        const maxR = Math.max(sourceR, targetR);
+
+        const angle1 = Math.atan2(sourcePos.y, sourcePos.x);
+        const angle2 = Math.atan2(targetPos.y, targetPos.x);
+        const angularSeparation = Math.min(
+          Math.abs(angle1 - angle2),
+          2 * Math.PI - Math.abs(angle1 - angle2)
+        );
+
+        if (maxR > 0.9 && angularSeparation < Math.PI / 4) {
+          return null;
+        }
+
+        const dist = Math.sqrt(
+          (sourcePos.x - targetPos.x) ** 2 + (sourcePos.y - targetPos.y) ** 2
+        );
+        if (transformRef.current.zoom > 2 && dist < 0.01) {
+          return null;
+        }
+
+        return {
+          key: edgeKey,
+          points: generateGeodesicPoints(
+            sourcePos.x,
+            sourcePos.y,
+            targetPos.x,
+            targetPos.y
+          ),
+          isOnPath,
+          isForward,
+          isBackward,
+        };
       })
       .filter(Boolean) as {
       key: string;
@@ -464,36 +763,20 @@ const Scene = ({
         )}
       </group>
 
-      <group>
-        {nodes.map((node) => {
-          const position = nodePositions.get(node.id);
-          if (!position) return null;
+      <InstancedNodes
+        nodes={nodes}
+        nodePositions={nodePositions}
+        selectedNode={selectedNode}
+        hoveredNode={hoveredNode}
+        pathNodeSet={pathNodeSet}
+        routingResult={routingResult}
+        onSelect={onSelectNode}
+        onHover={onHoverNode}
+      />
 
-          const isMeetingPoint = routingResult?.meetingNode === node;
-          const isOnPath = pathNodeSet.has(node.id);
-          const isRouteEndpoint =
-            routingResult?.success &&
-            (node === routingResult.path[0] ||
-              node === routingResult.path[routingResult.path.length - 1]);
+      <NodeLabels nodes={nodes} nodePositions={nodePositions} />
 
-          return (
-            <Node
-              key={node.id}
-              node={node}
-              position={position}
-              isSelected={selectedNode === node}
-              isHovered={hoveredNode === node}
-              isOnPath={isOnPath}
-              isMeetingPoint={isMeetingPoint}
-              isRouteEndpoint={isRouteEndpoint}
-              onSelect={() => onSelectNode(selectedNode === node ? null : node)}
-              onHover={(hovering) => onHoverNode(hovering ? node : null)}
-            />
-          );
-        })}
-      </group>
-
-      <CameraController onPan={onPan} onZoom={onZoom} />
+      <CameraController onTransformChange={onTransformChange} />
     </>
   );
 };
@@ -551,31 +834,13 @@ const Disc = ({
 }) => {
   const [hoveredNode, setHoveredNode] = useState<EmbeddedNode | null>(null);
 
-  const handlePan = useCallback(
-    (dx: number, dy: number) => {
-      const currentREuclidean = Math.tanh(panR / 2);
-      const currentX = currentREuclidean * Math.cos(panTheta);
-      const currentY = currentREuclidean * Math.sin(panTheta);
-
-      const newCenterEuclidean = moebiusTranslate(currentX, currentY, dx, dy);
-
-      const { r: newR, theta: newTheta } = euclideanToHyperbolic(
-        newCenterEuclidean.x,
-        newCenterEuclidean.y
-      );
-
-      setPanR(newR);
-      setPanTheta(newTheta);
+  const handleTransformChange = useCallback(
+    (newPanR: number, newPanTheta: number, newZoom: number) => {
+      setPanR(newPanR);
+      setPanTheta(newPanTheta);
+      setZoom(newZoom);
     },
-    [panR, panTheta, setPanR, setPanTheta]
-  );
-
-  const handleZoom = useCallback(
-    (delta: number) => {
-      const factor = Math.exp(delta);
-      setZoom((prev) => Math.max(0.02, Math.min(50, prev * factor)));
-    },
-    [setZoom]
+    [setPanR, setPanTheta, setZoom]
   );
 
   return (
@@ -596,8 +861,7 @@ const Disc = ({
         panR={panR}
         panTheta={panTheta}
         zoom={zoom}
-        onPan={handlePan}
-        onZoom={handleZoom}
+        onTransformChange={handleTransformChange}
       />
     </Canvas>
   );

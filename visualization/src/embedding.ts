@@ -21,7 +21,11 @@ export function parseCSV(csv: string): Edge[] {
   const edges: Edge[] = [];
 
   for (let i = 1; i < lines.length; i++) {
-    const [source, target] = lines[i].split(",").map((s) => s.trim());
+    const parts = lines[i].split(",").map((s) => s.trim());
+    if (parts.length < 2) continue;
+
+    const source = parts[0];
+    const target = parts[1];
     if (source && target) {
       edges.push({ source, target });
     }
@@ -134,74 +138,97 @@ function normalizeAngle(theta: number): number {
   return normalized;
 }
 
-function angularDistance(theta1: number, theta2: number): number {
-  const diff = Math.abs(theta1 - theta2);
-  return Math.min(diff, 2 * Math.PI - diff);
+function kappaToR(kappa: number, kappa0: number, R: number): number {
+  const logTerm = Math.log(kappa / kappa0);
+  return R - 2 * logTerm;
 }
 
-function computeChiLogSpace(
-  theta1: number,
-  theta2: number,
-  kappa1: number,
-  kappa2: number,
+function computeLogLikelihoodGradientFast(
+  targetIdx: number,
+  theta: number,
+  thetas: Float64Array,
+  kappas: Float64Array,
+  adjSets: Set<number>[],
+  activeCount: number,
   N: number,
   kBar: number,
   beta: number
 ): number {
-  const deltaTheta = angularDistance(theta1, theta2);
+  let gradient = 0;
+  const neighbors = adjSets[targetIdx];
+  const kappa1 = kappas[targetIdx];
   const mu = beta / (2 * Math.PI * kBar * Math.sin(Math.PI / beta));
 
-  const logChi =
-    Math.log(N) +
-    Math.log(deltaTheta) -
-    Math.log(2 * Math.PI * mu) -
-    Math.log(kappa1) -
-    Math.log(kappa2);
-  return Math.exp(logChi);
+  const baseChiFactor = N / (2 * Math.PI * mu * kappa1);
+
+  for (let i = 0; i < activeCount; i++) {
+    if (i === targetIdx) continue;
+
+    const theta2 = thetas[i];
+    const kappa2 = kappas[i];
+
+    const deltaThetaRaw = theta - theta2;
+    const absDeltaTheta = Math.abs(deltaThetaRaw);
+
+    const minDeltaTheta = Math.min(absDeltaTheta, 2 * Math.PI - absDeltaTheta);
+
+    const sign =
+      absDeltaTheta < Math.PI
+        ? Math.sign(deltaThetaRaw)
+        : -Math.sign(deltaThetaRaw);
+
+    const chi = (N * minDeltaTheta) / (2 * Math.PI * mu * kappa1 * kappa2);
+
+    const dChiDTheta = (sign * baseChiFactor) / kappa2;
+    const chiPowBeta = Math.pow(chi, beta);
+
+    const dPdChi =
+      (-beta * Math.pow(chi, beta - 1)) / Math.pow(chiPowBeta + 1, 2);
+
+    const p = 1 / (chiPowBeta + 1);
+    const pSafe = Math.max(1e-10, Math.min(1 - 1e-10, p));
+
+    const dLogLdP = neighbors.has(i) ? 1 / pSafe : -1 / (1 - pSafe);
+
+    gradient += dLogLdP * dPdChi * dChiDTheta;
+  }
+
+  return gradient;
 }
 
-function connectionProbabilityLogSpace(chi: number, beta: number): number {
-  const logChi = Math.log(chi);
-  const chiPowBeta = Math.exp(beta * logChi);
-  return 1 / (chiPowBeta + 1);
-}
-
-function computeLocalLogLikelihood(
-  nodeId: string,
+function computeLocalLogLikelihoodFast(
+  targetIdx: number,
   theta: number,
-  thetas: Map<string, number>,
-  kappas: Map<string, number>,
-  adjacency: Map<string, Set<string>>,
-  allNodes: string[],
+  thetas: Float64Array,
+  kappas: Float64Array,
+  adjSets: Set<number>[],
+  activeCount: number,
   N: number,
   kBar: number,
   beta: number
 ): number {
   let logL = 0;
-  const neighbors = adjacency.get(nodeId) || new Set();
-  const kappa1 = kappas.get(nodeId)!;
+  const neighbors = adjSets[targetIdx];
+  const kappa1 = kappas[targetIdx];
+  const mu = beta / (2 * Math.PI * kBar * Math.sin(Math.PI / beta));
 
-  for (const otherNode of allNodes) {
-    if (otherNode === nodeId) continue;
+  for (let i = 0; i < activeCount; i++) {
+    if (i === targetIdx) continue;
 
-    const theta2 = thetas.get(otherNode);
-    if (theta2 === undefined) continue;
+    const theta2 = thetas[i];
+    const kappa2 = kappas[i];
 
-    const kappa2 = kappas.get(otherNode)!;
-    const chi = computeChiLogSpace(
-      theta,
-      theta2,
-      kappa1,
-      kappa2,
-      N,
-      kBar,
-      beta
-    );
-    const p = connectionProbabilityLogSpace(chi, beta);
+    const diff = Math.abs(theta - theta2);
+    const minDeltaTheta = Math.min(diff, 2 * Math.PI - diff);
+
+    const chi = (N * minDeltaTheta) / (2 * Math.PI * mu * kappa1 * kappa2);
+
+    const chiPowBeta = Math.pow(chi, beta);
+    const p = 1 / (chiPowBeta + 1);
 
     const pSafe = Math.max(1e-10, Math.min(1 - 1e-10, p));
 
-    if (neighbors.has(otherNode)) {
+    if (neighbors.has(i)) {
       logL += Math.log(pSafe);
     } else {
       logL += Math.log(1 - pSafe);
@@ -211,86 +238,33 @@ function computeLocalLogLikelihood(
   return logL;
 }
 
-function computeLogLikelihoodGradient(
-  nodeId: string,
-  theta: number,
-  thetas: Map<string, number>,
-  kappas: Map<string, number>,
-  adjacency: Map<string, Set<string>>,
-  allNodes: string[],
-  N: number,
-  kBar: number,
-  beta: number
-): number {
-  let gradient = 0;
-  const neighbors = adjacency.get(nodeId) || new Set();
-  const kappa1 = kappas.get(nodeId)!;
-  const mu = beta / (2 * Math.PI * kBar * Math.sin(Math.PI / beta));
-
-  for (const otherNode of allNodes) {
-    if (otherNode === nodeId) continue;
-
-    const theta2 = thetas.get(otherNode);
-    if (theta2 === undefined) continue;
-
-    const kappa2 = kappas.get(otherNode)!;
-
-    const deltaTheta = theta - theta2;
-    const absDeltaTheta = Math.abs(deltaTheta);
-
-    const sign =
-      absDeltaTheta < Math.PI ? Math.sign(deltaTheta) : -Math.sign(deltaTheta);
-
-    const dChiDTheta = (sign * N) / (2 * Math.PI * mu * kappa1 * kappa2);
-
-    const chi = computeChiLogSpace(
-      theta,
-      theta2,
-      kappa1,
-      kappa2,
-      N,
-      kBar,
-      beta
-    );
-    const p = connectionProbabilityLogSpace(chi, beta);
-
-    const chiPowBeta = Math.pow(chi, beta);
-    const dPdChi =
-      (-beta * Math.pow(chi, beta - 1)) / Math.pow(chiPowBeta + 1, 2);
-
-    const pSafe = Math.max(1e-10, Math.min(1 - 1e-10, p));
-    const dLogLdP = neighbors.has(otherNode) ? 1 / pSafe : -1 / (1 - pSafe);
-
-    gradient += dLogLdP * dPdChi * dChiDTheta;
-  }
-
-  return gradient;
-}
-
-function optimizeThetaGradientDescent(
-  nodeId: string,
-  thetas: Map<string, number>,
-  kappas: Map<string, number>,
-  adjacency: Map<string, Set<string>>,
-  allNodes: string[],
+function optimizeThetaGradientDescentFast(
+  targetIdx: number,
+  thetas: Float64Array,
+  kappas: Float64Array,
+  adjSets: Set<number>[],
+  activeCount: number,
   N: number,
   kBar: number,
   beta: number,
   maxIterations: number = 100,
-  tolerance: number = 1e-4
+  tolerance: number = 2e-4
 ): number {
-  let theta = thetas.get(nodeId) || 0;
+  let theta = thetas[targetIdx];
   let learningRate = 0.1;
   let prevGradient = 0;
+  let stagnantCount = 0;
+  let bestTheta = theta;
+  let bestLogL = -Infinity;
 
   for (let iter = 0; iter < maxIterations; iter++) {
-    const gradient = computeLogLikelihoodGradient(
-      nodeId,
+    const gradient = computeLogLikelihoodGradientFast(
+      targetIdx,
       theta,
       thetas,
       kappas,
-      adjacency,
-      allNodes,
+      adjSets,
+      activeCount,
       N,
       kBar,
       beta
@@ -302,167 +276,131 @@ function optimizeThetaGradientDescent(
     learningRate = Math.max(0.001, Math.min(0.2, learningRate));
 
     const step = learningRate * gradient;
-
     const clampedStep = Math.max(-0.1, Math.min(0.1, step));
     theta += clampedStep;
-
     theta = normalizeAngle(theta);
 
-    prevGradient = gradient;
-
-    if (Math.abs(gradient) < tolerance) {
-      break;
-    }
-  }
-
-  let thetaAlt = normalizeAngle(theta + Math.PI);
-  let learningRateAlt = 0.1;
-  let prevGradientAlt = 0;
-
-  for (let iter = 0; iter < maxIterations; iter++) {
-    const gradient = computeLogLikelihoodGradient(
-      nodeId,
-      thetaAlt,
+    const currentLogL = computeLocalLogLikelihoodFast(
+      targetIdx,
+      theta,
       thetas,
       kappas,
-      adjacency,
-      allNodes,
+      adjSets,
+      activeCount,
       N,
       kBar,
       beta
     );
-
-    if (
-      Math.sign(gradient) !== Math.sign(prevGradientAlt) &&
-      prevGradientAlt !== 0
-    ) {
-      learningRateAlt *= 0.5;
+    if (currentLogL > bestLogL) {
+      bestLogL = currentLogL;
+      bestTheta = theta;
     }
-    learningRateAlt = Math.max(0.001, Math.min(0.2, learningRateAlt));
 
-    const step = learningRateAlt * gradient;
-    const clampedStep = Math.max(-0.1, Math.min(0.1, step));
-    thetaAlt += clampedStep;
-    thetaAlt = normalizeAngle(thetaAlt);
-
-    prevGradientAlt = gradient;
-
-    if (Math.abs(gradient) < tolerance) {
-      break;
+    if (Math.abs(clampedStep) < tolerance * 0.1) {
+      stagnantCount++;
+      if (stagnantCount > 5) break;
+    } else {
+      stagnantCount = 0;
     }
+
+    prevGradient = gradient;
+    if (Math.abs(gradient) < tolerance) break;
   }
 
-  const logL1 = computeLocalLogLikelihood(
-    nodeId,
-    theta,
-    thetas,
-    kappas,
-    adjacency,
-    allNodes,
-    N,
-    kBar,
-    beta
-  );
-  const logL2 = computeLocalLogLikelihood(
-    nodeId,
-    thetaAlt,
-    thetas,
-    kappas,
-    adjacency,
-    allNodes,
-    N,
-    kBar,
-    beta
-  );
-
-  return logL1 > logL2 ? theta : thetaAlt;
+  return bestTheta;
 }
 
-function computeThetaCircularMean(
-  nodeId: string,
-  thetas: Map<string, number>,
-  adjacency: Map<string, Set<string>>
+function computeThetaCircularMeanFast(
+  targetIdx: number,
+  thetas: Float64Array,
+  adjSets: Set<number>[]
 ): number {
-  const neighbors = adjacency.get(nodeId);
-  if (!neighbors || neighbors.size === 0) {
+  const neighbors = adjSets[targetIdx];
+  if (neighbors.size === 0) {
     return normalizeAngle(Math.random() * 2 * Math.PI - Math.PI);
   }
 
   let sumSin = 0;
   let sumCos = 0;
-  let count = 0;
 
-  for (const neighbor of neighbors) {
-    const neighborTheta = thetas.get(neighbor);
-    if (neighborTheta !== undefined) {
-      sumSin += Math.sin(neighborTheta);
-      sumCos += Math.cos(neighborTheta);
-      count++;
-    }
+  for (const neighborIdx of neighbors) {
+    const neighborTheta = thetas[neighborIdx];
+    sumSin += Math.sin(neighborTheta);
+    sumCos += Math.cos(neighborTheta);
   }
 
   const meanTheta = Math.atan2(sumSin, sumCos);
   return normalizeAngle(meanTheta);
 }
 
-function kappaToR(kappa: number, kappa0: number, R: number): number {
-  return R - 2 * Math.log(kappa / kappa0);
-}
-
-export async function embedNetwork(
-  csv: string
-): Promise<{ nodes: EmbeddedNode[]; stats: NetworkStats }> {
+export async function embedNetwork(csv: string): Promise<{
+  nodes: EmbeddedNode[];
+  stats: NetworkStats;
+  stringAdjacency: Map<string, Set<string>>;
+}> {
   const edges = parseCSV(csv);
-
-  const { nodes, adjacency, degrees } = buildGraph(edges);
+  const { nodes, adjacency: stringAdjacency, degrees } = buildGraph(edges);
 
   const N = nodes.length;
   const degreeValues = Array.from(degrees.values());
   const kBar = degreeValues.reduce((a, b) => a + b, 0) / N;
 
   const gamma = estimateGamma(degreeValues);
-  const clustering = estimateClustering(nodes, adjacency);
+  const clustering = estimateClustering(nodes, stringAdjacency);
   const beta = estimateBeta(clustering);
 
   const kappa0 = (kBar * (gamma - 2)) / (gamma - 1);
   const mu = beta / (2 * Math.PI * kBar * Math.sin(Math.PI / beta));
   const R = 2 * Math.log(N / (Math.PI * mu * kappa0 * kappa0));
 
-  const kappas = new Map<string, number>();
-  for (const node of nodes) {
-    const degree = degrees.get(node)!;
-    const kappa = computeKappa(degree, gamma, beta, kBar);
-    kappas.set(node, kappa);
-  }
-
   const sortedNodes = [...nodes].sort(
     (a, b) => degrees.get(b)! - degrees.get(a)!
   );
-  const thetas = new Map<string, number>();
 
-  const phase1Count = Math.min(100, N);
+  const nodeToIndex = new Map<string, number>();
+  sortedNodes.forEach((id, index) => nodeToIndex.set(id, index));
+
+  const thetas = new Float64Array(N);
+  const kappas = new Float64Array(N);
+  const adjSets: Set<number>[] = new Array(N);
+
+  for (let i = 0; i < N; i++) {
+    const nodeId = sortedNodes[i];
+    const degree = degrees.get(nodeId)!;
+
+    kappas[i] = computeKappa(degree, gamma, beta, kBar);
+
+    const stringNeighbors = stringAdjacency.get(nodeId) || new Set();
+    const intNeighbors = new Set<number>();
+    for (const nStr of stringNeighbors) {
+      if (nodeToIndex.has(nStr)) {
+        intNeighbors.add(nodeToIndex.get(nStr)!);
+      }
+    }
+    adjSets[i] = intNeighbors;
+  }
+
+  const phase1Count = Math.min(500, N);
 
   for (let i = 0; i < phase1Count; i++) {
-    const angle = -Math.PI + (2 * Math.PI * i) / phase1Count;
-    thetas.set(sortedNodes[i], angle);
+    thetas[i] = -Math.PI + (2 * Math.PI * i) / phase1Count;
+  }
+  for (let i = phase1Count; i < N; i++) {
+    thetas[i] = Math.random() * 2 * Math.PI - Math.PI;
   }
 
   const rounds = 6;
   for (let round = 0; round < rounds; round++) {
     for (let i = 0; i < phase1Count; i++) {
-      const node = sortedNodes[i];
-      thetas.set(
-        node,
-        optimizeThetaGradientDescent(
-          node,
-          thetas,
-          kappas,
-          adjacency,
-          sortedNodes.slice(0, phase1Count),
-          N,
-          kBar,
-          beta
-        )
+      thetas[i] = optimizeThetaGradientDescentFast(
+        i,
+        thetas,
+        kappas,
+        adjSets,
+        phase1Count,
+        N,
+        kBar,
+        beta
       );
     }
   }
@@ -470,22 +408,21 @@ export async function embedNetwork(
   let processed = phase1Count;
 
   while (processed < N) {
-    const batchEnd = Math.min(processed + 20, N);
-    const batchNodes = sortedNodes.slice(processed, batchEnd);
+    const batchEnd = Math.min(processed + 100, N);
 
-    for (const node of batchNodes) {
-      thetas.set(node, computeThetaCircularMean(node, thetas, adjacency));
+    for (let i = processed; i < batchEnd; i++) {
+      thetas[i] = computeThetaCircularMeanFast(i, thetas, adjSets);
     }
 
     processed = batchEnd;
   }
 
-  const result: EmbeddedNode[] = nodes.map((node) => ({
-    id: node,
-    r: kappaToR(kappas.get(node)!, kappa0, R),
-    theta: thetas.get(node)!,
-    degree: degrees.get(node)!,
-    kappa: kappas.get(node)!,
+  const result: EmbeddedNode[] = sortedNodes.map((id, index) => ({
+    id: id,
+    r: kappaToR(kappas[index], kappa0, R),
+    theta: thetas[index],
+    degree: degrees.get(id)!,
+    kappa: kappas[index],
   }));
 
   const stats: NetworkStats = {
@@ -498,5 +435,5 @@ export async function embedNetwork(
     kappa0,
   };
 
-  return { nodes: result, stats };
+  return { nodes: result, stats, stringAdjacency };
 }

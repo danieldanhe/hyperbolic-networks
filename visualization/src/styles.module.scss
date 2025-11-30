@@ -36,7 +36,6 @@ $opacity-muted: 0.6;
 @mixin reset-box-model {
   padding: 0;
   border: 0;
-  border-radius: 0;
   margin: 0;
 }
 
@@ -85,6 +84,55 @@ $opacity-muted: 0.6;
       -webkit-appearance: none;
     }
   }
+}
+
+@mixin tab-styles {
+  font: inherit;
+  min-width: 0;
+  max-width: 100%;
+  border: 0;
+  border-radius: $border-radius;
+  height: $input-height;
+  padding: 0 $spacing-md;
+  overflow-x: auto;
+  overflow-y: hidden;
+  cursor: pointer;
+  background-color: rgba($color-primary-light, $opacity-field);
+  &:hover {
+    background-color: rgba($color-primary-light, $opacity-hover);
+  }
+  &[data-selected] {
+    color: $color-primary-dark;
+  }
+  @media (prefers-color-scheme: light) {
+    background-color: rgba($color-primary-dark, $opacity-field);
+    &:hover {
+      background-color: rgba($color-primary-dark, $opacity-hover);
+    }
+    &[data-selected] {
+      color: $color-primary-light;
+    }
+  }
+}
+
+@mixin button-styles {
+  font: inherit;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  border: 0;
+  border-radius: $border-radius;
+  padding: 0 $spacing-xs;
+  &,
+  &:hover,
+  &:active {
+    background: none;
+  }
+  color: #000;
+  cursor: pointer;
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: break-word;
 }
 
 @mixin popup-styles {
@@ -180,6 +228,43 @@ $opacity-muted: 0.6;
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border-width: 0;
+}
+
+.container {
+  display: flex;
+  flex-direction: row;
+  justify-content: stretch;
+  min-height: 0;
+  flex: 1;
+}
+
+.tabContainer {
+  margin-bottom: $spacing-sm;
+}
+
+.tabsList {
+  @include flex-row;
+  flex-wrap: wrap;
+  position: relative;
+}
+
+.tab {
+  @include tab-styles;
+}
+
+.tabIndicator {
+  position: absolute;
+  z-index: -1;
+  left: var(--active-tab-left);
+  top: var(--active-tab-top);
+  width: var(--active-tab-width);
+  height: var(--active-tab-height);
+  border-radius: $border-radius;
+  height: $input-height;
+  background-color: $color-primary-light;
+  @media (prefers-color-scheme: light) {
+    background-color: $color-primary-dark;
+  }
 }
 
 .pageTitle {
@@ -347,18 +432,5 @@ $opacity-muted: 0.6;
 }
 
 .pathListButton {
-  @include reset-box-model;
-  padding: 0 $spacing-sm;
-  &,
-  &:hover,
-  &:active {
-    background: none;
-  }
-  cursor: pointer;
-  font: inherit;
-  color: #000;
-  text-align: left;
-  max-width: 100%;
-  white-space: normal;
-  overflow-wrap: break-word;
+  @include button-styles;
 }
