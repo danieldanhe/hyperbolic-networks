@@ -53,6 +53,40 @@ $opacity-muted: 0.6;
   align-items: baseline;
 }
 
+@mixin tab-styles {
+  font: inherit;
+  min-width: 0;
+  max-width: 100%;
+  border: 0;
+  border-radius: $border-radius;
+  height: $input-height;
+  padding: 0 $spacing-md;
+  overflow-x: auto;
+  overflow-y: hidden;
+  cursor: pointer;
+  color: $color-primary-light;
+  background-color: rgba($color-primary-light, $opacity-field);
+  &:hover {
+    background-color: rgba($color-primary-light, $opacity-hover);
+  }
+  &[data-selected] {
+    color: $color-primary-dark;
+  }
+  &:hover {
+    background-color: rgba($color-primary-light, $opacity-hover);
+  }
+  @media (prefers-color-scheme: light) {
+    color: $color-primary-dark;
+    background-color: rgba($color-primary-dark, $opacity-field);
+    &:hover {
+      background-color: rgba($color-primary-dark, $opacity-hover);
+    }
+    &[data-selected] {
+      color: $color-primary-light;
+    }
+  }
+}
+
 @mixin input-styles {
   font: inherit;
   min-width: 0;
@@ -82,35 +116,6 @@ $opacity-muted: 0.6;
     &::-webkit-outer-spin-button,
     &::-webkit-inner-spin-button {
       -webkit-appearance: none;
-    }
-  }
-}
-
-@mixin tab-styles {
-  font: inherit;
-  min-width: 0;
-  max-width: 100%;
-  border: 0;
-  border-radius: $border-radius;
-  height: $input-height;
-  padding: 0 $spacing-md;
-  overflow-x: auto;
-  overflow-y: hidden;
-  cursor: pointer;
-  background-color: rgba($color-primary-light, $opacity-field);
-  &:hover {
-    background-color: rgba($color-primary-light, $opacity-hover);
-  }
-  &[data-selected] {
-    color: $color-primary-dark;
-  }
-  @media (prefers-color-scheme: light) {
-    background-color: rgba($color-primary-dark, $opacity-field);
-    &:hover {
-      background-color: rgba($color-primary-dark, $opacity-hover);
-    }
-    &[data-selected] {
-      color: $color-primary-light;
     }
   }
 }
