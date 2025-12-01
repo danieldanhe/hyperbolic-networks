@@ -125,7 +125,7 @@ const InstancedNodes = ({
   onHover: (node: EmbeddedNode | null) => void;
 }) => {
   const meshRef = useRef<THREE.InstancedMesh>(null);
-  const { gl, raycaster, camera, size } = useThree();
+  const { gl, raycaster, camera } = useThree();
 
   const nodeData = useMemo(() => {
     return nodes
@@ -177,7 +177,6 @@ const InstancedNodes = ({
     if (!meshRef.current) return;
 
     const tempObject = new THREE.Object3D();
-    const tempColor = new THREE.Color();
 
     nodeData.forEach((data, i) => {
       if (!data) return;
