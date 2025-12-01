@@ -75,7 +75,7 @@ function estimateGamma(degrees: number[]): number {
   const sumLogRatio = tail.reduce((sum, k) => sum + Math.log(k / kMin), 0);
   let gamma = 1 + n / sumLogRatio;
 
-  return Math.max(1.5, Math.min(gamma, 4.0));
+  return Math.max(2.01, Math.min(gamma, 4.0));
 }
 
 function estimateClustering(

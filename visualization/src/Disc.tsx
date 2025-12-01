@@ -325,14 +325,16 @@ const Edge = ({
   isOnPath,
   isForwardPath,
   isBackwardPath,
+  nodeCount,
 }: {
   points: THREE.Vector3[];
   isOnPath: boolean;
   isForwardPath: boolean;
   isBackwardPath: boolean;
+  nodeCount: number;
 }) => {
   let colour = "#000000";
-  let opacity = 0.2;
+  let opacity = 1 / Math.sqrt(nodeCount);
   let lineWidth = 0.005;
 
   if (isForwardPath && isBackwardPath) {
@@ -661,7 +663,7 @@ const Scene = ({
     const edgeSet = new Set<string>();
     for (let i = 0; i < routingResult.backwardPath.length - 1; i++) {
       const a = routingResult.backwardPath[i].id;
-      b = routingResult.backwardPath[i + 1].id;
+      const b = routingResult.backwardPath[i + 1].id;
       edgeSet.add(`${a}-${b}`);
       edgeSet.add(`${b}-${a}`);
     }
@@ -758,6 +760,7 @@ const Scene = ({
               isOnPath={isOnPath}
               isForwardPath={isForward}
               isBackwardPath={isBackward}
+              nodeCount={nodes.length}
             />
           )
         )}

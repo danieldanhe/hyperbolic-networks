@@ -408,6 +408,7 @@ const ViewSection = ({
           value={round(panR, 4)}
         />
         <CoordinateInput
+          helpText="in degrees"
           label="θ"
           onValueChange={(newValue) =>
             setPanTheta(newValue ? (+newValue * Math.PI) / 180 : 0)
@@ -802,7 +803,7 @@ const App = () => {
   }, [startRouteNode, endRouteNode, adjacency, nodeMap]);
 
   const [currentTab, setCurrentTab] = useState<"toolbar" | "visualization">(
-    "visualization"
+    "toolbar"
   );
   const wide = useMediaQuery("(min-width: 840px)");
 
